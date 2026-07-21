@@ -95,14 +95,15 @@ function validateTaskInput(body, { partial = false } = {}) {
   return { errors, data };
 }
 
-// Title/notes/color for every colored task the user can see, regardless of date —
-// used by the create/edit form to keep same-[tag] tasks color-consistent even when
-// the matching task lives outside whatever date range the calendar currently shows.
-router.get('/tag-colors', (req, res) => {
+// Client/color for every colored task the user can see, regardless of date — used by
+// the create/edit form to keep same-client tasks color-consistent even when the
+// matching task lives outside whatever date range the calendar currently shows.
+router.get('/client-colors', (req, res) => {
   const rows = db
     .prepare(
-      `SELECT title, notes, color FROM tasks
-       WHERE (user_id = @userId OR shared = 1) AND color IS NOT NULL`
+      `SELECT client, color FROM tasks
+       WHERE (user_id = @userId OR shared = 1) AND color IS NOT NULL
+         AND client IS NOT NULL AND trim(client) != ''`
     )
     .all({ userId: req.user.id });
   res.json(rows);

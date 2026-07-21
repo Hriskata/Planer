@@ -15,7 +15,7 @@
   import TaskItem from './TaskItem.svelte';
   import WeekCalendar from './WeekCalendar.svelte';
   import MonthCalendar from './MonthCalendar.svelte';
-  import { extractTags } from './search.js';
+  import { extractClients } from './search.js';
 
   let viewMode = $state('day'); // 'day' | 'week' | 'month'
   let currentDate = $state(todayStr());
@@ -29,7 +29,7 @@
   let newTaskDate = $state(todayStr());
   let newTaskTime = $state(null);
   let searchQuery = $state('');
-  let selectedTags = $state([]); // multi-select — toggled independently, combined with OR
+  let selectedClients = $state([]); // multi-select — toggled independently, combined with OR
   let searchEnabled = $state(true);
 
   const weekDates = $derived(getWeekDates(currentDate));
@@ -37,19 +37,21 @@
   const referenceMonth = $derived(currentDate.slice(0, 7));
   // Empty array when the filter is off (via the toggle) or nothing is active — passed
   // down as [] means "no filter" to every view, so this is the single on/off switch.
-  // Typed text and any number of selected tag chips all combine via OR (taskMatchesAny).
+  // Typed text and any number of selected client chips all combine via OR (taskMatchesAny).
   const activeFilters = $derived(
-    searchEnabled ? [...selectedTags, ...(searchQuery.trim() ? [searchQuery.trim()] : [])] : []
+    searchEnabled ? [...selectedClients, ...(searchQuery.trim() ? [searchQuery.trim()] : [])] : []
   );
-  const availableTags = $derived(extractTags(tasks));
+  const availableClients = $derived(extractClients(tasks));
 
-  function toggleTag(tag) {
-    selectedTags = selectedTags.includes(tag) ? selectedTags.filter((t) => t !== tag) : [...selectedTags, tag];
+  function toggleClient(client) {
+    selectedClients = selectedClients.includes(client)
+      ? selectedClients.filter((c) => c !== client)
+      : [...selectedClients, client];
   }
 
   function clearFilters() {
     searchQuery = '';
-    selectedTags = [];
+    selectedClients = [];
   }
 
   // silent=true skips the `loading` flag for refreshes after a mutation (toggle/delete/
@@ -176,7 +178,7 @@
   <div class="search-input">
     <input
       type="search"
-      placeholder="Търсене... (или [таг])"
+      placeholder="Търсене... (или клиент)"
       bind:value={searchQuery}
       aria-label="Търсене на задачи"
     />
@@ -190,21 +192,21 @@
   </label>
 </div>
 
-{#if availableTags.length > 0 || selectedTags.length > 0}
+{#if availableClients.length > 0 || selectedClients.length > 0}
   <div class="tag-chips">
-    {#each availableTags as tag (tag)}
+    {#each availableClients as client (client)}
       <button
         class="tag-chip"
-        class:active={selectedTags.includes(tag)}
+        class:active={selectedClients.includes(client)}
         onclick={() => {
-          toggleTag(tag);
+          toggleClient(client);
           searchEnabled = true;
         }}
       >
-        [{tag}]
+        {client}
       </button>
     {/each}
-    {#if searchQuery || selectedTags.length > 0}
+    {#if searchQuery || selectedClients.length > 0}
       <button class="tag-chip clear-all" onclick={clearFilters}>Изчисти всички</button>
     {/if}
   </div>

@@ -1,8 +1,10 @@
 <script>
   import { untrack, onMount } from 'svelte';
-  import { createTask, updateTask, deleteTask, getTagColorSource, uploadImage } from './api.js';
+  import { createTask, updateTask, deleteTask, getClientColorSource, uploadImage } from './api.js';
   import { TASK_COLORS } from './colors.js';
-  import { extractTags, getTagColors } from './search.js';
+  import { getClientColors } from './search.js';
+
+  const POST_TYPES = ['Story', 'Post', 'Reel', 'Carrousel'];
 
   let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
 
@@ -73,20 +75,21 @@
     if (hour === '') minute = '';
   });
 
-  // Same-tag tasks share one color: fetched once on open (best-effort — a failure here
-  // shouldn't block creating/editing a task, it just means no auto-fill/lock this time).
-  let tagColorSource = $state([]);
+  // Same-client tasks share one color: fetched once on open (best-effort — a failure
+  // here shouldn't block creating/editing a task, it just means no auto-fill/lock this
+  // time).
+  let clientColorSource = $state([]);
   onMount(async () => {
     try {
-      tagColorSource = await getTagColorSource();
+      clientColorSource = await getClientColorSource();
     } catch {
       // ignore — see comment above
     }
   });
 
-  const tagColorMap = $derived(getTagColors(tagColorSource));
-  const currentTag = $derived(extractTags([{ title, notes }])[0] ?? null);
-  const lockedColor = $derived(currentTag ? (tagColorMap.get(currentTag) ?? null) : null);
+  const clientColorMap = $derived(getClientColors(clientColorSource));
+  const trimmedClient = $derived(client.trim());
+  const lockedColor = $derived(trimmedClient ? (clientColorMap.get(trimmedClient) ?? null) : null);
 
   $effect(() => {
     if (lockedColor && color !== lockedColor) {
@@ -155,7 +158,10 @@
 
     <label>
       Тип пост
-      <input type="text" bind:value={postType} placeholder="напр. Instagram Story, Ролка, Статия..." />
+      <select bind:value={postType}>
+        <option value="">— Избери —</option>
+        {#each POST_TYPES as pt}<option value={pt}>{pt}</option>{/each}
+      </select>
     </label>
 
     <div class="row">
@@ -208,7 +214,7 @@
     <label>
       Цвят (по избор)
       {#if lockedColor}
-        <p class="tag-color-note">Определен от тага [{currentTag}] — важи за всички задачи с този таг.</p>
+        <p class="client-color-note">Определен от клиента "{trimmedClient}" — важи за всички негови постове.</p>
       {/if}
       <div class="color-picker">
         <button
@@ -362,7 +368,7 @@
     cursor: not-allowed;
     opacity: 0.7;
   }
-  .tag-color-note {
+  .client-color-note {
     font-size: 0.75rem;
     color: #64748b;
     margin: 0;
