@@ -70,8 +70,17 @@
   const hasAnyAllDay = $derived(dayData.some((d) => d.allDay.length > 0));
 
   let scrollEl;
+  // .header-row (day names/dates + the all-day row) has no vertical scrollbar of its
+  // own, but .grid-scroll-y below it does — on a browser with classic (non-overlay)
+  // scrollbars, that reserved strip shrinks .grid's available width while .header-row
+  // stays full-width, so the two grids' otherwise-identical minmax(84px, 1fr) columns
+  // drift out of alignment (worse in later columns). Measuring the actual scrollbar
+  // width and padding the header rows to match keeps both regions the same effective
+  // width regardless of OS/browser scrollbar style (0 on overlay-scrollbar systems).
+  let scrollbarWidth = $state(0);
   onMount(() => {
     scrollEl?.scrollTo({ top: 7 * ROW_HEIGHT });
+    if (scrollEl) scrollbarWidth = scrollEl.offsetWidth - scrollEl.clientWidth;
   });
 
   // Drag-and-drop, via Pointer Events (unified mouse+touch — the native HTML5
@@ -181,7 +190,7 @@
        is scoped to just the hour grid below, so the header stays visible while
        scrolling through hours. -->
   <div class="scroll-x">
-    <div class="header-row">
+    <div class="header-row" style="padding-right: {scrollbarWidth}px">
       <div class="gutter"></div>
       {#each weekDates as date (date)}
         <div class="day-header" class:weekend={isWeekend(date)}>
@@ -192,7 +201,7 @@
     </div>
 
     {#if hasAnyAllDay}
-      <div class="header-row all-day-row">
+      <div class="header-row all-day-row" style="padding-right: {scrollbarWidth}px">
         <div class="gutter">Цял ден</div>
         {#each dayData as day (day.date)}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -305,6 +314,9 @@
     text-align: center;
     padding: 0.4rem 0.1rem;
     border-left: 1px solid #cbd5e1;
+    /* Without this, a grid item's own content can grow past the track's minmax(84px,
+       1fr) minimum and desync this grid's column widths from .grid's below it. */
+    min-width: 0;
   }
   /* Deliberately a different gray than the hour/column borders above and below —
      otherwise the weekend wash and the grid lines blend into each other. */
@@ -333,6 +345,7 @@
     flex-direction: column;
     gap: 0.15rem;
     cursor: pointer;
+    min-width: 0;
   }
   .all-day-chip {
     font-size: 0.7rem;
@@ -380,6 +393,8 @@
   .day-column {
     position: relative;
     border-left: 1px solid #cbd5e1;
+    min-width: 0;
+    overflow: hidden;
   }
   .hour-cell {
     display: block;
