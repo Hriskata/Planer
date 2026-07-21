@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/dev-dist
+backend/data
+.env
+.git
+idea
+*.md

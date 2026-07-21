@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - planer-data:/app/backend/data
+      # Bind mount (not the named volume) so backups land in a host-visible folder —
+      # easy to copy elsewhere (external drive, cloud sync) for real offsite protection.
+      - ./backups:/app/backend/backups
+    ports:
+      - "3000:3000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - app
+
+volumes:
+  planer-data:
