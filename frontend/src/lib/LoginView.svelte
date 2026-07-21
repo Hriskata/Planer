@@ -41,8 +41,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
-    padding: 1rem;
+    min-height: 100vh; /* fallback for browsers without dvh support */
+    min-height: 100dvh; /* avoids the classic iOS Safari jump when the address bar shows/hides */
+    box-sizing: border-box;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
   }
   form {
     display: flex;

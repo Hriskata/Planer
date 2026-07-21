@@ -2,8 +2,9 @@
   import { onMount } from 'svelte';
   import { displayDate, weekdayNameShort, isWeekend } from './date.js';
   import { colorOf } from './colors.js';
+  import { taskMatches } from './search.js';
 
-  let { weekDates, tasks, onEdit, onMove } = $props();
+  let { weekDates, tasks, searchFilter = '', onEdit, onMove, onCreate } = $props();
 
   // Done tasks always render gray+struck-through (CSS class) regardless of color — an
   // inline style would otherwise win the cascade over that class, so this returns ''
@@ -11,6 +12,10 @@
   function tileColorStyle(task) {
     const c = task.status !== 'done' ? colorOf(task.color) : null;
     return c ? `background: ${c.bg}; color: ${c.fg}; border-color: ${c.bg};` : '';
+  }
+
+  function isDimmed(task) {
+    return searchFilter && !taskMatches(task, searchFilter);
   }
 
   const ROW_HEIGHT = 48; // px per hour
@@ -76,6 +81,15 @@
   const MOVE_THRESHOLD = 6; // px before a press counts as a drag rather than a tap
   const SNAP_MINUTES = 15;
 
+  // Shared by drag-drop (below) and click-to-create — converts a pixel offset from the
+  // top of a day-column into a 15-minute-snapped "HH:MM" time.
+  function offsetToTime(offsetY) {
+    const hours = offsetY / ROW_HEIGHT;
+    let totalMinutes = Math.round((hours * 60) / SNAP_MINUTES) * SNAP_MINUTES;
+    totalMinutes = Math.max(0, Math.min(23 * 60 + 45, totalMinutes));
+    return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+  }
+
   let dragState = $state(null); // { task, startX, startY, moved, x, y } | null
   let suppressNextClick = false;
 
@@ -115,10 +129,7 @@
     } else if (dayColumn?.dataset.date) {
       const date = dayColumn.dataset.date;
       const rect = dayColumn.getBoundingClientRect();
-      const hours = (e.clientY - rect.top) / ROW_HEIGHT;
-      let totalMinutes = Math.round((hours * 60) / SNAP_MINUTES) * SNAP_MINUTES;
-      totalMinutes = Math.max(0, Math.min(23 * 60 + 45, totalMinutes));
-      const time = `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+      const time = offsetToTime(e.clientY - rect.top);
       if (date !== task.date || time !== task.time) onMove(task, { date, time });
     }
   }
@@ -133,6 +144,32 @@
       return;
     }
     onEdit(task);
+  }
+
+  // Click-to-create: each hour-cell is its own <button> (see template) rather than one
+  // click handler on the whole day-column — real, individually focusable buttons instead
+  // of a div wrapping other buttons, which is both a genuine keyboard-accessibility win
+  // and sidesteps the "interactive element nested in another interactive element" mess a
+  // single container-level click handler would create around the existing event tiles.
+  // Guarded against the spurious click that follows a completed drag-drop (same flag
+  // handleTileClick uses).
+  function handleHourCellClick(e, date, hour) {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetInDay = hour * ROW_HEIGHT + (e.clientY - rect.top);
+    onCreate(date, offsetToTime(offsetInDay));
+  }
+
+  function handleAllDayRowClick(e, date) {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+    if (e.target.closest('button')) return;
+    onCreate(date, null);
   }
 </script>
 
@@ -158,12 +195,23 @@
       <div class="header-row all-day-row">
         <div class="gutter">Цял ден</div>
         {#each dayData as day (day.date)}
-          <div class="all-day-cell" class:weekend={isWeekend(day.date)} data-date={day.date}>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <!-- Unlike the hour grid, chip count/positions here are unpredictable (0-N,
+               plain flex list) — no clean per-slot button to carry this click instead.
+               Keyboard users still have the fully-accessible "+" FAB as a fallback. -->
+          <div
+            class="all-day-cell"
+            class:weekend={isWeekend(day.date)}
+            data-date={day.date}
+            onclick={(e) => handleAllDayRowClick(e, day.date)}
+          >
             {#each day.allDay as task (task.id)}
               <button
                 class="all-day-chip"
                 class:done={task.status === 'done'}
                 class:dragging={dragState?.task.id === task.id}
+                class:dimmed={isDimmed(task)}
                 style={tileColorStyle(task)}
                 onpointerdown={(e) => handlePointerDown(e, task)}
                 onclick={() => handleTileClick(task)}
@@ -184,15 +232,27 @@
           {/each}
         </div>
         {#each dayData as day (day.date)}
-          <div class="day-column" class:weekend={isWeekend(day.date)} data-date={day.date} style="height: {ROW_HEIGHT * 24}px">
+          <div
+            class="day-column"
+            class:weekend={isWeekend(day.date)}
+            data-date={day.date}
+            style="height: {ROW_HEIGHT * 24}px"
+          >
             {#each HOURS as h}
-              <div class="hour-cell" style="height: {ROW_HEIGHT}px"></div>
+              <button
+                type="button"
+                class="hour-cell"
+                style="height: {ROW_HEIGHT}px"
+                aria-label="Нова задача в {displayDate(day.date)} около {String(h).padStart(2, '0')}:00"
+                onclick={(e) => handleHourCellClick(e, day.date, h)}
+              ></button>
             {/each}
             {#each day.timed as item (item.task.id)}
               <button
                 class="event"
                 class:done={item.task.status === 'done'}
                 class:dragging={dragState?.task.id === item.task.id}
+                class:dimmed={isDimmed(item.task)}
                 style="top: {item.top}%; height: {item.height}%; left: {item.left}%; width: {item.width}%; {tileColorStyle(item.task)}"
                 onpointerdown={(e) => handlePointerDown(e, item.task)}
                 onclick={() => handleTileClick(item.task)}
@@ -270,6 +330,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+    cursor: pointer;
   }
   .all-day-chip {
     font-size: 0.7rem;
@@ -281,6 +342,10 @@
     text-align: left;
     cursor: pointer;
     touch-action: none;
+    /* Stops iOS's long-press magnifier/text-selection callout from hijacking a drag gesture. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .all-day-chip.done {
     text-decoration: line-through;
@@ -289,8 +354,13 @@
   .all-day-chip.dragging {
     opacity: 0.3;
   }
+  .all-day-chip.dimmed {
+    opacity: 0.3;
+    filter: grayscale(60%);
+  }
   .grid-scroll-y {
-    max-height: 60vh;
+    max-height: 60vh; /* fallback for browsers without dvh support */
+    max-height: 60dvh;
     overflow-y: auto;
   }
   .hours-gutter {
@@ -310,8 +380,15 @@
     border-left: 1px solid #f1f5f9;
   }
   .hour-cell {
+    display: block;
+    width: 100%;
+    border: none;
     border-bottom: 1px solid #f1f5f9;
+    background: none;
+    margin: 0;
+    padding: 0;
     box-sizing: border-box;
+    cursor: pointer;
   }
   .event {
     position: absolute;
@@ -329,6 +406,9 @@
     flex-direction: column;
     line-height: 1.15;
     touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .event.done {
     background: #94a3b8;
@@ -336,6 +416,10 @@
   }
   .event.dragging {
     opacity: 0.3;
+  }
+  .event.dimmed {
+    opacity: 0.3;
+    filter: grayscale(60%);
   }
   .event-time {
     font-weight: 600;

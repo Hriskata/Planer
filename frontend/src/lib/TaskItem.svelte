@@ -1,14 +1,17 @@
 <script>
   import { colorOf } from './colors.js';
+  import { taskMatches } from './search.js';
 
-  let { task, onToggle, onEdit, onDelete } = $props();
+  let { task, searchFilter = '', onToggle, onEdit, onDelete } = $props();
 
   const swatch = $derived(colorOf(task.color));
+  const dimmed = $derived(searchFilter && !taskMatches(task, searchFilter));
 </script>
 
 <li
   class="task-item"
   class:done={task.status === 'done'}
+  class:dimmed
   style="border-left-color: {swatch ? swatch.bg : 'transparent'}"
 >
   <input
@@ -46,6 +49,10 @@
   .task-item.done .task-title {
     text-decoration: line-through;
     color: #94a3b8;
+  }
+  .task-item.dimmed {
+    opacity: 0.35;
+    filter: grayscale(50%);
   }
   input[type='checkbox'] {
     margin-top: 0.2rem;

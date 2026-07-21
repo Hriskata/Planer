@@ -1,9 +1,10 @@
 <script>
-  import { untrack } from 'svelte';
-  import { createTask, updateTask, deleteTask } from './api.js';
+  import { untrack, onMount } from 'svelte';
+  import { createTask, updateTask, deleteTask, getTagColorSource } from './api.js';
   import { TASK_COLORS } from './colors.js';
+  import { extractTags, getTagColors } from './search.js';
 
-  let { task = null, duplicateFrom = null, defaultDate, onSaved, onCancel, onDuplicate } = $props();
+  let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
 
   // When duplicating, `task` is null (this is a create, not an edit) but fields are
   // pre-filled from `duplicateFrom`. `task` itself still drives edit-only UI (delete,
@@ -29,7 +30,11 @@
   // untrack() confirms to Svelte that this is intentional, not missed reactivity.
   let title = $state(untrack(() => source?.title ?? ''));
   let date = $state(untrack(() => source?.date ?? defaultDate));
-  const [initHour, initMinute] = untrack(() => (source?.time ? snapTo15(...source.time.split(':')) : ['', '']));
+  const [initHour, initMinute] = untrack(() => {
+    if (source?.time) return snapTo15(...source.time.split(':'));
+    if (defaultTime) return defaultTime.split(':');
+    return ['', ''];
+  });
   let hour = $state(initHour);
   let minute = $state(initMinute);
   let notes = $state(untrack(() => source?.notes ?? ''));
@@ -44,6 +49,27 @@
   $effect(() => {
     if (hour !== '' && minute === '') minute = '00';
     if (hour === '') minute = '';
+  });
+
+  // Same-tag tasks share one color: fetched once on open (best-effort — a failure here
+  // shouldn't block creating/editing a task, it just means no auto-fill/lock this time).
+  let tagColorSource = $state([]);
+  onMount(async () => {
+    try {
+      tagColorSource = await getTagColorSource();
+    } catch {
+      // ignore — see comment above
+    }
+  });
+
+  const tagColorMap = $derived(getTagColors(tagColorSource));
+  const currentTag = $derived(extractTags([{ title, notes }])[0] ?? null);
+  const lockedColor = $derived(currentTag ? (tagColorMap.get(currentTag) ?? null) : null);
+
+  $effect(() => {
+    if (lockedColor && color !== lockedColor) {
+      color = lockedColor;
+    }
   });
 
   async function handleSubmit(e) {
@@ -111,11 +137,15 @@
     </label>
     <label>
       Цвят (по избор)
+      {#if lockedColor}
+        <p class="tag-color-note">Определен от тага [{currentTag}] — важи за всички задачи с този таг.</p>
+      {/if}
       <div class="color-picker">
         <button
           type="button"
           class="color-swatch none"
           class:selected={color === null}
+          disabled={!!lockedColor}
           onclick={() => (color = null)}
           aria-label="Без цвят"
         ></button>
@@ -124,6 +154,7 @@
             type="button"
             class="color-swatch"
             class:selected={color === c.value}
+            disabled={!!lockedColor}
             style="background: {c.bg};"
             onclick={() => (color = c.value)}
             aria-label={c.label}
@@ -209,6 +240,15 @@
   }
   .color-swatch.selected {
     border-color: #1e293b;
+  }
+  .color-swatch:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+  .tag-color-note {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin: 0;
   }
   input,
   textarea,

@@ -15,6 +15,7 @@
   import TaskItem from './TaskItem.svelte';
   import WeekCalendar from './WeekCalendar.svelte';
   import MonthCalendar from './MonthCalendar.svelte';
+  import { extractTags } from './search.js';
 
   let viewMode = $state('day'); // 'day' | 'week' | 'month'
   let currentDate = $state(todayStr());
@@ -25,10 +26,18 @@
   let showForm = $state(false);
   let editingTask = $state(null);
   let duplicateSource = $state(null);
+  let newTaskDate = $state(todayStr());
+  let newTaskTime = $state(null);
+  let searchQuery = $state('');
+  let searchEnabled = $state(true);
 
   const weekDates = $derived(getWeekDates(currentDate));
   const monthDates = $derived(getMonthGridDates(currentDate));
   const referenceMonth = $derived(currentDate.slice(0, 7));
+  // Empty when the filter is off (via the toggle) or there's nothing typed — passed
+  // down as '' means "no filter" to every view, so this is the single on/off switch.
+  const activeFilter = $derived(searchEnabled ? searchQuery.trim() : '');
+  const availableTags = $derived(extractTags(tasks));
 
   // silent=true skips the `loading` flag for refreshes after a mutation (toggle/delete/
   // move/save) — otherwise the {#if loading} branch below briefly unmounts WeekCalendar/
@@ -79,6 +88,8 @@
   function openNewTaskForm() {
     editingTask = null;
     duplicateSource = null;
+    newTaskDate = currentDate;
+    newTaskTime = null;
     showForm = true;
   }
   function openEditForm(task) {
@@ -89,6 +100,15 @@
   function handleDuplicate(task) {
     editingTask = null;
     duplicateSource = task;
+    showForm = true;
+  }
+  // Click-to-create on empty calendar space (WeekCalendar/MonthCalendar) — date is
+  // always given, time only from the week grid (month cells have no time granularity).
+  function handleGridCreate(date, time = null) {
+    editingTask = null;
+    duplicateSource = null;
+    newTaskDate = date;
+    newTaskTime = time;
     showForm = true;
   }
 
@@ -148,6 +168,41 @@
   </div>
 </nav>
 
+<div class="search-bar">
+  <div class="search-input">
+    <input
+      type="search"
+      placeholder="Търсене... (или [таг])"
+      bind:value={searchQuery}
+      aria-label="Търсене на задачи"
+    />
+    {#if searchQuery}
+      <button class="clear" onclick={() => (searchQuery = '')} aria-label="Изчисти търсенето">×</button>
+    {/if}
+  </div>
+  <label class="filter-toggle">
+    <input type="checkbox" bind:checked={searchEnabled} />
+    Филтър
+  </label>
+</div>
+
+{#if availableTags.length > 0}
+  <div class="tag-chips">
+    {#each availableTags as tag (tag)}
+      <button
+        class="tag-chip"
+        class:active={searchQuery === `[${tag}]`}
+        onclick={() => {
+          searchQuery = searchQuery === `[${tag}]` ? '' : `[${tag}]`;
+          searchEnabled = true;
+        }}
+      >
+        [{tag}]
+      </button>
+    {/each}
+  </div>
+{/if}
+
 <main>
   {#if offline}<p class="banner">Няма връзка — показват се последно заредените задачи.</p>{/if}
   {#if error}<p class="error">{error}</p>{/if}
@@ -163,6 +218,7 @@
       {#each tasks as task (task.id)}
         <TaskItem
           {task}
+          searchFilter={activeFilter}
           onToggle={() => handleToggleStatus(task)}
           onEdit={() => openEditForm(task)}
           onDelete={() => handleDelete(task)}
@@ -170,10 +226,25 @@
       {/each}
     </ul>
   {:else if viewMode === 'week'}
-    <WeekCalendar {weekDates} {tasks} onEdit={openEditForm} onMove={handleMoveTask} />
+    <WeekCalendar
+      {weekDates}
+      {tasks}
+      searchFilter={activeFilter}
+      onEdit={openEditForm}
+      onMove={handleMoveTask}
+      onCreate={handleGridCreate}
+    />
   {:else}
     <h2>{monthLabel(currentDate)}</h2>
-    <MonthCalendar {monthDates} {referenceMonth} {tasks} onEdit={openEditForm} onDayClick={handleDayClick} />
+    <MonthCalendar
+      {monthDates}
+      {referenceMonth}
+      {tasks}
+      searchFilter={activeFilter}
+      onEdit={openEditForm}
+      onDayClick={handleDayClick}
+      onCreate={handleGridCreate}
+    />
   {/if}
 </main>
 
@@ -188,7 +259,8 @@
     <TaskForm
       task={editingTask}
       duplicateFrom={duplicateSource}
-      defaultDate={currentDate}
+      defaultDate={newTaskDate}
+      defaultTime={newTaskTime}
       onSaved={handleFormSaved}
       onCancel={() => (showForm = false)}
       onDuplicate={handleDuplicate}
@@ -202,6 +274,9 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem;
+    /* Pushes content below the Dynamic Island/notch when installed as a standalone
+       iOS app (env() resolves to 0 on browsers without a safe area — harmless there). */
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
     background: #2563eb;
     color: white;
   }
@@ -249,8 +324,76 @@
     color: white;
     border-color: #2563eb;
   }
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 1rem 0.5rem;
+    max-width: 900px;
+    margin: 0 auto;
+    flex-wrap: wrap;
+  }
+  .search-input {
+    position: relative;
+    flex: 1;
+    min-width: 180px;
+  }
+  .search-input input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 2rem 0.5rem 0.75rem;
+    /* Must stay >=16px — iOS Safari auto-zooms the page on focus for any input below that. */
+    font-size: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+  }
+  .search-input .clear {
+    position: absolute;
+    right: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: none;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.2rem;
+  }
+  .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #475569;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0 1rem 0.75rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .tag-chip {
+    font-size: 0.75rem;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+  }
+  .tag-chip.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+  }
   main {
     padding: 0 1rem 5rem;
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
     max-width: 900px;
     margin: 0 auto;
   }
@@ -282,7 +425,7 @@
   .fab {
     position: fixed;
     right: 1.25rem;
-    bottom: 1.25rem;
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
     width: 3.25rem;
     height: 3.25rem;
     border-radius: 50%;

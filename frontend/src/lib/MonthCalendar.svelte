@@ -1,17 +1,27 @@
 <script>
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
   import { colorOf } from './colors.js';
+  import { taskMatches } from './search.js';
 
-  let { monthDates, referenceMonth, tasks, onEdit, onDayClick } = $props();
+  let { monthDates, referenceMonth, tasks, searchFilter = '', onEdit, onDayClick, onCreate } = $props();
 
   const MAX_CHIPS = 3;
   const today = todayStr();
 
   const dayData = $derived(
     monthDates.map((date) => {
+      // When a filter is active, matching tasks sort first so they always land in the
+      // MAX_CHIPS visible slots instead of possibly being buried behind "+N още".
       const dayTasks = tasks
         .filter((t) => t.date === date)
-        .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+        .sort((a, b) => {
+          if (searchFilter) {
+            const aMatch = taskMatches(a, searchFilter);
+            const bMatch = taskMatches(b, searchFilter);
+            if (aMatch !== bMatch) return aMatch ? -1 : 1;
+          }
+          return (a.time || '99:99').localeCompare(b.time || '99:99');
+        });
       return {
         date,
         visible: dayTasks.slice(0, MAX_CHIPS),
@@ -26,6 +36,18 @@
     const c = task.status !== 'done' ? colorOf(task.color) : null;
     return c ? `background: ${c.bg}; color: ${c.fg};` : '';
   }
+
+  function isDimmed(task) {
+    return searchFilter && !taskMatches(task, searchFilter);
+  }
+
+  // Click-to-create on empty cell space — the day-number/chip/"+more" buttons handle
+  // their own clicks (navigate/edit), so this only fires when the click didn't land on
+  // one of them.
+  function handleCellClick(e, date) {
+    if (e.target.closest('button')) return;
+    onCreate(date);
+  }
 </script>
 
 <div class="month-calendar">
@@ -36,11 +58,17 @@
   </div>
   <div class="month-grid">
     {#each dayData as day (day.date)}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <!-- Chip count varies (0-N) so there's no fixed per-slot button to carry this
+           click instead, same reasoning as WeekCalendar's all-day-cell. Keyboard users
+           still have the fully-accessible "+" FAB as a fallback. -->
       <div
         class="day-cell"
         class:weekend={isWeekend(day.date)}
         class:other-month={!day.date.startsWith(referenceMonth)}
         class:today={day.date === today}
+        onclick={(e) => handleCellClick(e, day.date)}
       >
         <button class="day-number" onclick={() => onDayClick(day.date)}>{Number(day.date.slice(8, 10))}</button>
         <div class="chips">
@@ -48,6 +76,7 @@
             <button
               class="chip"
               class:done={task.status === 'done'}
+              class:dimmed={isDimmed(task)}
               style={chipStyle(task)}
               onclick={() => onEdit(task)}
             >
@@ -74,7 +103,11 @@
   .weekday-header,
   .month-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    /* minmax(0, 1fr), not plain 1fr: grid tracks default to a minimum of `auto`, which
+       on narrow screens lets unbroken chip-title text (white-space: nowrap) push each
+       column wider than its fair share, overflowing the whole grid past the viewport
+       with no scroll container to reach it — confirmed visually on a 430px-wide screen. */
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
   .weekday-header {
     border-bottom: 1px solid #e2e8f0;
@@ -98,6 +131,7 @@
     flex-direction: column;
     gap: 0.15rem;
     box-sizing: border-box;
+    cursor: pointer;
   }
   .day-cell.weekend {
     background: #f1f5f9;
@@ -144,6 +178,10 @@
     background: #94a3b8;
     color: white;
     text-decoration: line-through;
+  }
+  .chip.dimmed {
+    opacity: 0.35;
+    filter: grayscale(60%);
   }
   .chip-time {
     font-weight: 600;

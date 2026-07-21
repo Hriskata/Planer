@@ -67,6 +67,13 @@ export function getTasksRange(from, to) {
   return fetchTasksWithCache(CACHE_PREFIX + `${from}_${to}`, `?from=${from}&to=${to}`);
 }
 
+// { title, notes, color } for every colored task visible to the user, across all dates —
+// used to auto-fill a [tag]'s established color regardless of which date range the
+// calendar currently has loaded. Best-effort: callers should tolerate this failing.
+export function getTagColorSource() {
+  return request('/tasks/tag-colors');
+}
+
 export function createTask(data) {
   return request('/tasks', { method: 'POST', body: JSON.stringify(data) });
 }

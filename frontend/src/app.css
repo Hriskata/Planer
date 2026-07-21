@@ -7,8 +7,12 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: #f8fafc;
   color: #1e293b;
+  /* Keeps iOS's rubber-band bounce from chaining into pull-to-refresh at the body edge. */
+  overscroll-behavior-y: contain;
 }
 
 button {
   font-family: inherit;
+  /* Removes the gray flash Safari/Chrome show on tap on touch devices. */
+  -webkit-tap-highlight-color: transparent;
 }
