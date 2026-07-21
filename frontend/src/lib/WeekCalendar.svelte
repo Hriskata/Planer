@@ -1,32 +1,13 @@
 <script>
   import { displayDate, weekdayNameShort, isWeekend } from './date.js';
-  import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
-  import { createDragToMove } from './dragDrop.svelte.js';
+  import { consumeSuppressedClick } from './dragDrop.svelte.js';
+  import PostTile from './PostTile.svelte';
 
-  let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onMove, onCreate } = $props();
-
-  const drag = createDragToMove((task, changes) => onMove(task, changes));
-
-  // Done tasks always render gray+struck-through (CSS class) regardless of post-type
-  // color — an inline style would otherwise win the cascade over that class, so this
-  // returns '' for done tasks and lets the .done CSS rule apply undisturbed.
-  function tileColorStyle(task) {
-    if (task.status === 'done') return '';
-    const c = colorForPostType(task.post_type);
-    return `background: ${c.bg}; color: ${c.fg};`;
-  }
+  let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onCreate } = $props();
 
   function isDimmed(task) {
     return hasActiveFilters(searchFilter) && !taskMatchesFilters(task, searchFilter);
-  }
-
-  // "Client - post type" is the primary label per the content-planning layout; falls
-  // back to the title when neither is set (e.g. older tasks from before these fields
-  // existed) so a post never renders with a blank label.
-  function postLabel(task) {
-    const parts = [task.client, task.post_type].map((v) => (v || '').trim()).filter(Boolean);
-    return parts.length > 0 ? parts.join(' - ') : task.title;
   }
 
   // Untimed posts (no time set) sort first, then timed posts chronologically.
@@ -58,22 +39,17 @@
   });
 
   // Click-to-create on empty column space — the posts handle their own clicks (edit,
-  // toggle-done), so this only fires when the click didn't land on one. No hour grid
-  // here, so a click just creates an untimed post for that day — the user sets a time
-  // in the form if they want one.
+  // toggle-done, drag), so this only fires when the click didn't land on one. No hour
+  // grid here, so a click just creates an untimed post for that day — the user sets a
+  // time in the form if they want one.
   function handleColumnClick(e, date) {
-    if (drag.consumeSuppressedClick()) return; // this click ended a drag, not a tap
+    if (consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('.post')) return;
     onCreate(date, null);
   }
 </script>
 
-<svelte:window
-  onresize={measureBodyHeight}
-  onpointermove={drag.handlePointerMove}
-  onpointerup={(e) => drag.handlePointerUp(e, '.day-column')}
-  onpointercancel={drag.handlePointerCancel}
-/>
+<svelte:window onresize={measureBodyHeight} />
 
 <div class="calendar">
   <!-- Single horizontally-scrolling wrapper so the header and post columns stay
@@ -107,44 +83,7 @@
           onclick={(e) => handleColumnClick(e, day.date)}
         >
           {#each day.tasks as task (task.id)}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- A plain <button> can't contain the "Завършена" checkbox below (nested
-                 interactive controls are invalid HTML and double-fire clicks) — this
-                 div carries the same edit-on-click/keyboard behavior a button gives for
-                 free. -->
-            <div
-              class="post"
-              class:done={task.status === 'done'}
-              class:dimmed={isDimmed(task)}
-              class:dragging={drag.dragState?.task.id === task.id}
-              style={tileColorStyle(task)}
-              role="button"
-              tabindex="0"
-              onpointerdown={(e) => drag.handlePointerDown(e, task)}
-              onclick={() => {
-                if (drag.consumeSuppressedClick()) return;
-                onEdit(task);
-              }}
-              onkeydown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(task); }
-              }}
-            >
-              <span class="post-label">{postLabel(task)}</span>
-              {#if task.image_path}
-                <img class="post-image" src={task.image_path} alt="" loading="lazy" />
-              {/if}
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-              <!-- Stops the click from bubbling to the tile's own onclick (which opens
-                   the edit form) — toggling done shouldn't also open the form. -->
-              <label class="post-done" onclick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={task.status === 'done'}
-                  onchange={() => onToggle(task)}
-                />
-                Завършена
-              </label>
-            </div>
+            <PostTile {task} dimmed={isDimmed(task)} {onEdit} {onToggle} />
           {:else}
             <p class="empty-hint">Няма постове</p>
           {/each}
@@ -152,12 +91,6 @@
       {/each}
     </div>
   </div>
-
-  {#if drag.dragState?.moved}
-    <div class="drag-ghost" style="left: {drag.dragState.x}px; top: {drag.dragState.y}px;">
-      {postLabel(drag.dragState.task)}
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -223,100 +156,11 @@
   .day-column.weekend {
     background: #e9edf2;
   }
-  .post {
-    background: #dbeafe;
-    color: #1d4ed8;
-    border: none;
-    border-radius: 6px;
-    padding: 0.35rem;
-    text-align: left;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    font-size: 0.8rem;
-    line-height: 1.2;
-    touch-action: none;
-    /* Stops iOS's long-press magnifier/text-selection callout from hijacking a drag gesture. */
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  .post.done {
-    background: #94a3b8;
-    color: white;
-    text-decoration: line-through;
-  }
-  .post.dimmed {
-    opacity: 0.35;
-    filter: grayscale(60%);
-  }
-  .post.dragging {
-    opacity: 0.3;
-  }
-  .post-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    font-weight: 600;
-  }
-  /* Uniform tile size across every post, on every day column, regardless of the
-     original photo's dimensions — aspect-ratio (not a fixed px height) keeps the box
-     proportional to the day column's own width, which itself already scales with
-     screen size. object-fit: contain shrinks the photo to fit inside that box without
-     cropping it (unlike cover); background: inherit fills the leftover letterboxed
-     space with the same color as the tile itself instead of showing through blank. */
-  .post-image {
-    display: block;
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    object-fit: contain;
-    background: inherit;
-    border-radius: 4px;
-  }
-  .post.done .post-image {
-    filter: grayscale(100%);
-    opacity: 0.75;
-  }
-  .post:focus-visible {
-    outline: 2px solid #1e293b;
-    outline-offset: 1px;
-  }
-  .post-done {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.7rem;
-    font-weight: normal;
-    cursor: pointer;
-  }
-  .post-done input {
-    margin: 0;
-    cursor: pointer;
-  }
   .empty-hint {
     margin: 0;
     font-size: 0.7rem;
     color: #94a3b8;
     text-align: center;
     padding: 0.5rem 0;
-  }
-  .drag-ghost {
-    position: fixed;
-    transform: translate(-50%, -130%);
-    pointer-events: none;
-    background: #1d4ed8;
-    color: white;
-    padding: 0.3rem 0.5rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-    z-index: 50;
-    max-width: 160px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 </style>

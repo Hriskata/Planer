@@ -30,7 +30,10 @@
   let client = $state(untrack(() => source?.client ?? ''));
   let title = $state(untrack(() => source?.title ?? ''));
   let postType = $state(untrack(() => source?.post_type ?? ''));
-  let date = $state(untrack(() => source?.date ?? defaultDate));
+  // NOT source?.date ?? defaultDate — date is nullable now (an unscheduled/backlog
+  // task), and `null ?? defaultDate` would wrongly replace a real "no date" with
+  // today's date on every edit. Only a genuinely absent source falls back to it.
+  let date = $state(untrack(() => (source ? (source.date ?? '') : defaultDate)));
   const [initHour, initMinute] = untrack(() => {
     if (source?.time) return snapTo15(...source.time.split(':'));
     if (defaultTime) return defaultTime.split(':');
@@ -78,7 +81,7 @@
     const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
     const payload = {
       title,
-      date,
+      date: date || null,
       time,
       notes: notes || null,
       shared,
@@ -139,8 +142,8 @@
 
     <div class="row">
       <label>
-        Дата
-        <input type="date" bind:value={date} required />
+        Дата (по избор)
+        <input type="date" bind:value={date} />
       </label>
       <label class="time-field">
         Час (по избор)

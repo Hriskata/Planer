@@ -1,6 +1,6 @@
 <script>
   import { auth } from './stores.js';
-  import { getTasks, getTasksRange, updateTask, deleteTask, logout } from './api.js';
+  import { getTasks, getTasksRange, getUnscheduledTasks, updateTask, logout } from './api.js';
   import {
     todayStr,
     addDays,
@@ -12,15 +12,23 @@
     monthLabel,
   } from './date.js';
   import TaskForm from './TaskForm.svelte';
-  import TaskItem from './TaskItem.svelte';
+  import PostTile from './PostTile.svelte';
   import WeekCalendar from './WeekCalendar.svelte';
   import MonthCalendar from './MonthCalendar.svelte';
+  import BacklogColumn from './BacklogColumn.svelte';
   import { extractClients } from './search.js';
   import { POST_TYPES } from './postTypes.js';
+  import {
+    getDragState,
+    handlePointerMove,
+    handlePointerUp,
+    handlePointerCancel,
+  } from './dragDrop.svelte.js';
 
   let viewMode = $state('day'); // 'day' | 'week' | 'month'
   let currentDate = $state(todayStr());
   let tasks = $state([]);
+  let unscheduledTasks = $state([]); // no date yet — shown in the backlog column
   let loading = $state(false);
   let error = $state('');
   let offline = $state(false);
@@ -68,6 +76,9 @@
       }
       tasks = result.tasks;
       offline = result.offline;
+
+      const unscheduledResult = await getUnscheduledTasks();
+      unscheduledTasks = unscheduledResult.tasks;
     } catch (err) {
       error = err.message;
     } finally {
@@ -134,18 +145,8 @@
     }
   }
 
-  async function handleDelete(task) {
-    if (!confirm(`Изтриване на "${task.title}"?`)) return;
-    try {
-      await deleteTask(task.id);
-      await loadTasks({ silent: true });
-    } catch (err) {
-      error = err.message;
-    }
-  }
-
-  // Drag-and-drop in WeekCalendar/MonthCalendar only ever changes the date — there's no
-  // hour grid to express a new time in anymore.
+  // Drag-and-drop only ever changes the date — there's no hour grid to express a new
+  // time against anymore.
   async function handleMoveTask(task, changes) {
     try {
       await updateTask(task.id, changes);
@@ -160,6 +161,15 @@
     loadTasks({ silent: true });
   }
 </script>
+
+<!-- Drag-and-drop is handled once, globally, here — not per-view — because a drag can
+     start in the backlog column and end in WeekCalendar's grid (or vice versa), which
+     are siblings, not nested inside one another. -->
+<svelte:window
+  onpointermove={handlePointerMove}
+  onpointerup={(e) => handlePointerUp(e, handleMoveTask)}
+  onpointercancel={handlePointerCancel}
+/>
 
 <header>
   <h1>Планер</h1>
@@ -230,46 +240,68 @@
 
   {#if loading}
     <p class="empty">Зареждане...</p>
-  {:else if viewMode === 'day'}
-    <h2>{weekdayName(currentDate)}, {displayDate(currentDate)}</h2>
-    {#if tasks.length === 0}
-      <p class="empty">Няма задачи за този ден.</p>
-    {/if}
-    <ul class="task-list">
-      {#each tasks as task (task.id)}
-        <TaskItem
-          {task}
-          searchFilter={activeFilters}
-          onToggle={() => handleToggleStatus(task)}
-          onEdit={() => openEditForm(task)}
-          onDelete={() => handleDelete(task)}
-        />
-      {/each}
-    </ul>
-  {:else if viewMode === 'week'}
-    <WeekCalendar
-      {weekDates}
-      {tasks}
-      searchFilter={activeFilters}
-      onEdit={openEditForm}
-      onToggle={handleToggleStatus}
-      onMove={handleMoveTask}
-      onCreate={handleGridCreate}
-    />
   {:else}
-    <h2>{monthLabel(currentDate)}</h2>
-    <MonthCalendar
-      {monthDates}
-      {referenceMonth}
-      {tasks}
-      searchFilter={activeFilters}
-      onEdit={openEditForm}
-      onDayClick={handleDayClick}
-      onMove={handleMoveTask}
-      onCreate={handleGridCreate}
-    />
+    <div class="content-row">
+      <div class="calendar-area">
+        {#if viewMode === 'day'}
+          <h2>{weekdayName(currentDate)}, {displayDate(currentDate)}</h2>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <!-- data-date makes this a drop target too, same as WeekCalendar's
+               day-column/MonthCalendar's day-cell — dragging a backlog post here
+               schedules it for the day currently being viewed. -->
+          <div
+            class="day-grid"
+            data-date={currentDate}
+            onclick={(e) => {
+              if (e.target.closest('.post')) return;
+              handleGridCreate(currentDate, null);
+            }}
+          >
+            {#each tasks as task (task.id)}
+              <PostTile {task} onEdit={openEditForm} onToggle={handleToggleStatus} />
+            {:else}
+              <p class="empty">Няма задачи за този ден.</p>
+            {/each}
+          </div>
+        {:else if viewMode === 'week'}
+          <WeekCalendar
+            {weekDates}
+            {tasks}
+            searchFilter={activeFilters}
+            onEdit={openEditForm}
+            onToggle={handleToggleStatus}
+            onCreate={handleGridCreate}
+          />
+        {:else}
+          <h2>{monthLabel(currentDate)}</h2>
+          <MonthCalendar
+            {monthDates}
+            {referenceMonth}
+            {tasks}
+            searchFilter={activeFilters}
+            onEdit={openEditForm}
+            onDayClick={handleDayClick}
+            onCreate={handleGridCreate}
+          />
+        {/if}
+      </div>
+
+      <BacklogColumn
+        tasks={unscheduledTasks}
+        searchFilter={activeFilters}
+        onEdit={openEditForm}
+        onToggle={handleToggleStatus}
+      />
+    </div>
   {/if}
 </main>
+
+{#if getDragState()?.moved}
+  <div class="drag-ghost" style="left: {getDragState().x}px; top: {getDragState().y}px;">
+    {getDragState().task.title}
+  </div>
+{/if}
 
 <button class="fab" onclick={openNewTaskForm} aria-label="Нова задача">+</button>
 
@@ -430,10 +462,45 @@
     color: #334155;
     margin: 1.25rem 0 0.5rem;
   }
-  .task-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+  /* The backlog column is a fixed-width sibling, which is what shrinks the calendar
+     itself (flex: 1 fills whatever's left). Stacks vertically below the calendar on
+     narrow screens instead of squeezing both side by side. */
+  .content-row {
+    display: flex;
+    gap: 1rem;
+    align-items: stretch;
+  }
+  .calendar-area {
+    flex: 1;
+    min-width: 0;
+  }
+  @media (max-width: 720px) {
+    .content-row {
+      flex-direction: column;
+    }
+  }
+  .day-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+    min-height: 120px;
+    cursor: pointer;
+  }
+  .drag-ghost {
+    position: fixed;
+    transform: translate(-50%, -130%);
+    pointer-events: none;
+    background: #1d4ed8;
+    color: white;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 50;
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .empty {
     color: #94a3b8;

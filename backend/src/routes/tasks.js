@@ -19,29 +19,53 @@ function validateTaskInput(body, { partial = false } = {}) {
     }
   }
 
-  if (!partial || body.date !== undefined) {
-    if (typeof body.date !== 'string' || !DATE_RE.test(body.date)) {
-      errors.push('date е задължително и трябва да е във формат YYYY-MM-DD.');
+  // date is optional — a task with no date is "unscheduled" (shown in the backlog
+  // column) until dragged onto a day in week/month/day view.
+  //
+  // Nullable fields below all follow the same three-way shape: field omitted entirely
+  // -> leave data untouched (partial update keeps the existing value) or default to
+  // null (full create); field explicitly null -> clear it (data[field] = null), even
+  // on a partial update — body.date !== null must be checked BEFORE falling into the
+  // "!partial" branch, or an explicit null during an edit (e.g. dragging a task back
+  // to the unscheduled/backlog column, or clearing notes) is silently dropped instead
+  // of actually clearing the column.
+  if (body.date !== undefined) {
+    if (body.date !== null) {
+      if (typeof body.date !== 'string' || !DATE_RE.test(body.date)) {
+        errors.push('date трябва да е във формат YYYY-MM-DD.');
+      } else {
+        data.date = body.date;
+      }
     } else {
-      data.date = body.date;
+      data.date = null;
     }
+  } else if (!partial) {
+    data.date = null;
   }
 
-  if (body.time !== undefined && body.time !== null) {
-    if (typeof body.time !== 'string' || !TIME_RE.test(body.time)) {
-      errors.push('time трябва да е във формат HH:MM.');
+  if (body.time !== undefined) {
+    if (body.time !== null) {
+      if (typeof body.time !== 'string' || !TIME_RE.test(body.time)) {
+        errors.push('time трябва да е във формат HH:MM.');
+      } else {
+        data.time = body.time;
+      }
     } else {
-      data.time = body.time;
+      data.time = null;
     }
   } else if (!partial) {
     data.time = null;
   }
 
-  if (body.notes !== undefined && body.notes !== null) {
-    if (typeof body.notes !== 'string') {
-      errors.push('notes трябва да е текст.');
+  if (body.notes !== undefined) {
+    if (body.notes !== null) {
+      if (typeof body.notes !== 'string') {
+        errors.push('notes трябва да е текст.');
+      } else {
+        data.notes = body.notes;
+      }
     } else {
-      data.notes = body.notes;
+      data.notes = null;
     }
   } else if (!partial) {
     data.notes = null;
@@ -49,11 +73,15 @@ function validateTaskInput(body, { partial = false } = {}) {
 
   // client, post_type, image_path: simple optional text fields, same shape as notes.
   for (const field of ['client', 'post_type', 'image_path']) {
-    if (body[field] !== undefined && body[field] !== null) {
-      if (typeof body[field] !== 'string') {
-        errors.push(`${field} трябва да е текст.`);
+    if (body[field] !== undefined) {
+      if (body[field] !== null) {
+        if (typeof body[field] !== 'string') {
+          errors.push(`${field} трябва да е текст.`);
+        } else {
+          data[field] = body[field];
+        }
       } else {
-        data[field] = body[field];
+        data[field] = null;
       }
     } else if (!partial) {
       data[field] = null;
@@ -111,6 +139,19 @@ router.get('/', (req, res) => {
     from: from ?? null,
     to: to ?? null,
   });
+  res.json(rows);
+});
+
+// Tasks with no date at all — the backlog column shown beside every view (day/week/
+// month), independent of whatever date range that view currently has loaded.
+router.get('/unscheduled', (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT * FROM tasks
+       WHERE (user_id = @userId OR shared = 1) AND date IS NULL
+       ORDER BY created_at DESC`
+    )
+    .all({ userId: req.user.id });
   res.json(rows);
 });
 

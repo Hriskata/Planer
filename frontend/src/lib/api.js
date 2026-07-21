@@ -43,9 +43,9 @@ export function logout() {
 // On a network error (fetch throws TypeError) we read from the cache instead of
 // crashing the view. Writes (create/update/delete) are not queued offline — they just
 // show an error; full two-way sync is out of scope for the MVP.
-async function fetchTasksWithCache(cacheKey, query) {
+async function fetchTasksWithCache(cacheKey, path) {
   try {
-    const tasks = await request(`/tasks${query}`);
+    const tasks = await request(path);
     localStorage.setItem(cacheKey, JSON.stringify(tasks));
     return { tasks, offline: false };
   } catch (err) {
@@ -58,13 +58,19 @@ async function fetchTasksWithCache(cacheKey, query) {
 }
 
 export function getTasks(date) {
-  return fetchTasksWithCache(CACHE_PREFIX + (date || 'all'), date ? `?date=${date}` : '');
+  return fetchTasksWithCache(CACHE_PREFIX + (date || 'all'), `/tasks${date ? `?date=${date}` : ''}`);
 }
 
 // Inclusive date range — used by the week and month views instead of one request per
 // visible day.
 export function getTasksRange(from, to) {
-  return fetchTasksWithCache(CACHE_PREFIX + `${from}_${to}`, `?from=${from}&to=${to}`);
+  return fetchTasksWithCache(CACHE_PREFIX + `${from}_${to}`, `/tasks?from=${from}&to=${to}`);
+}
+
+// Tasks with no date — the backlog column shown beside every view, independent of
+// whatever date range is currently displayed.
+export function getUnscheduledTasks() {
+  return fetchTasksWithCache(CACHE_PREFIX + 'unscheduled', '/tasks/unscheduled');
 }
 
 // Separate from request() on purpose: file uploads need multipart/form-data with a

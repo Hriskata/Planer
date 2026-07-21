@@ -2,11 +2,9 @@
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
   import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
-  import { createDragToMove } from './dragDrop.svelte.js';
+  import { getDragState, handlePointerDown, consumeSuppressedClick } from './dragDrop.svelte.js';
 
-  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onMove, onCreate } = $props();
-
-  const drag = createDragToMove((task, changes) => onMove(task, changes));
+  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate } = $props();
 
   const MAX_CHIPS = 3;
   const today = todayStr();
@@ -70,18 +68,13 @@
   // their own clicks (navigate/edit), so this only fires when the click didn't land on
   // one of them.
   function handleCellClick(e, date) {
-    if (drag.consumeSuppressedClick()) return; // this click ended a drag, not a tap
+    if (consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('button')) return;
     onCreate(date);
   }
 </script>
 
-<svelte:window
-  onresize={measureRowHeight}
-  onpointermove={drag.handlePointerMove}
-  onpointerup={(e) => drag.handlePointerUp(e, '.day-cell')}
-  onpointercancel={drag.handlePointerCancel}
-/>
+<svelte:window onresize={measureRowHeight} />
 
 <div class="month-calendar">
   <div class="weekday-header">
@@ -112,11 +105,11 @@
               class="chip"
               class:done={task.status === 'done'}
               class:dimmed={isDimmed(task)}
-              class:dragging={drag.dragState?.task.id === task.id}
+              class:dragging={getDragState()?.task.id === task.id}
               style={chipStyle(task)}
-              onpointerdown={(e) => drag.handlePointerDown(e, task)}
+              onpointerdown={(e) => handlePointerDown(e, task)}
               onclick={() => {
-                if (drag.consumeSuppressedClick()) return;
+                if (consumeSuppressedClick()) return;
                 onEdit(task);
               }}
             >
@@ -131,12 +124,6 @@
       </div>
     {/each}
   </div>
-
-  {#if drag.dragState?.moved}
-    <div class="drag-ghost" style="left: {drag.dragState.x}px; top: {drag.dragState.y}px;">
-      {drag.dragState.task.title}
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -257,21 +244,5 @@
     text-align: left;
     cursor: pointer;
     padding: 0.1rem 0.3rem;
-  }
-  .drag-ghost {
-    position: fixed;
-    transform: translate(-50%, -130%);
-    pointer-events: none;
-    background: #1d4ed8;
-    color: white;
-    padding: 0.3rem 0.5rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-    z-index: 50;
-    max-width: 160px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 </style>

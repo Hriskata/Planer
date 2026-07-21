@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   notes TEXT,
-  date TEXT NOT NULL,                       -- format YYYY-MM-DD
+  date TEXT,                                -- format YYYY-MM-DD, NULL = unscheduled (backlog)
   time TEXT,                                -- format HH:MM, optional
   status TEXT NOT NULL DEFAULT 'pending',   -- 'pending' | 'done'
   shared INTEGER NOT NULL DEFAULT 0,        -- 0 = personal task, 1 = visible to all users
