@@ -1,16 +1,17 @@
 <script>
   import { displayDate, weekdayNameShort, isWeekend } from './date.js';
-  import { colorOf } from './colors.js';
+  import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
 
   let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onCreate } = $props();
 
-  // Done tasks always render gray+struck-through (CSS class) regardless of color — an
-  // inline style would otherwise win the cascade over that class, so this returns ''
-  // for done tasks and lets the .done CSS rule apply undisturbed.
+  // Done tasks always render gray+struck-through (CSS class) regardless of post-type
+  // color — an inline style would otherwise win the cascade over that class, so this
+  // returns '' for done tasks and lets the .done CSS rule apply undisturbed.
   function tileColorStyle(task) {
-    const c = task.status !== 'done' ? colorOf(task.color) : null;
-    return c ? `background: ${c.bg}; color: ${c.fg};` : '';
+    if (task.status === 'done') return '';
+    const c = colorForPostType(task.post_type);
+    return `background: ${c.bg}; color: ${c.fg};`;
   }
 
   function isDimmed(task) {

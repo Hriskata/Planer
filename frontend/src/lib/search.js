@@ -30,16 +30,3 @@ export function extractClients(tasks) {
   }
   return [...clients].sort((a, b) => a.localeCompare(b, 'bg'));
 }
-
-// Maps each client to the color already used by an existing task of theirs — so a new
-// task for the same client can inherit it automatically. First match wins if history is
-// inconsistent (e.g. tasks colored before this feature existed); not worth resolving further.
-export function getClientColors(tasks) {
-  const map = new Map();
-  for (const task of tasks) {
-    if (!task.color) continue;
-    const client = (task.client || '').trim();
-    if (client && !map.has(client)) map.set(client, task.color);
-  }
-  return map;
-}

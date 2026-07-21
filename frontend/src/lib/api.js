@@ -67,13 +67,6 @@ export function getTasksRange(from, to) {
   return fetchTasksWithCache(CACHE_PREFIX + `${from}_${to}`, `?from=${from}&to=${to}`);
 }
 
-// { client, color } for every colored task visible to the user, across all dates — used
-// to auto-fill a client's established color regardless of which date range the calendar
-// currently has loaded. Best-effort: callers should tolerate this failing.
-export function getClientColorSource() {
-  return request('/tasks/client-colors');
-}
-
 // Separate from request() on purpose: file uploads need multipart/form-data with a
 // browser-generated boundary, which only happens if we DON'T set Content-Type
 // ourselves (request() always sends application/json). Returns { path }.

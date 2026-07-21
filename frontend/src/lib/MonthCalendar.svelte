@@ -1,6 +1,6 @@
 <script>
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
-  import { colorOf } from './colors.js';
+  import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
 
   let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate } = $props();
@@ -54,8 +54,9 @@
   // Done tasks always render gray+struck-through (CSS class) — see the identical
   // comment/pattern in WeekCalendar.svelte.
   function chipStyle(task) {
-    const c = task.status !== 'done' ? colorOf(task.color) : null;
-    return c ? `background: ${c.bg}; color: ${c.fg};` : '';
+    if (task.status === 'done') return '';
+    const c = colorForPostType(task.post_type);
+    return `background: ${c.bg}; color: ${c.fg};`;
   }
 
   function isDimmed(task) {

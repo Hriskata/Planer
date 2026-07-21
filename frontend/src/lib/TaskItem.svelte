@@ -1,10 +1,10 @@
 <script>
-  import { colorOf } from './colors.js';
+  import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
 
   let { task, searchFilter = {}, onToggle, onEdit, onDelete } = $props();
 
-  const swatch = $derived(colorOf(task.color));
+  const swatch = $derived(colorForPostType(task.post_type));
   const dimmed = $derived(hasActiveFilters(searchFilter) && !taskMatchesFilters(task, searchFilter));
 </script>
 
@@ -12,7 +12,7 @@
   class="task-item"
   class:done={task.status === 'done'}
   class:dimmed
-  style="border-left-color: {swatch ? swatch.bg : 'transparent'}"
+  style="border-left-color: {swatch.bg}"
 >
   <input
     type="checkbox"

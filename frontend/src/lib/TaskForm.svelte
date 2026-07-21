@@ -1,8 +1,6 @@
 <script>
-  import { untrack, onMount } from 'svelte';
-  import { createTask, updateTask, deleteTask, getClientColorSource, uploadImage } from './api.js';
-  import { TASK_COLORS } from './colors.js';
-  import { getClientColors } from './search.js';
+  import { untrack } from 'svelte';
+  import { createTask, updateTask, deleteTask, uploadImage } from './api.js';
   import { POST_TYPES } from './postTypes.js';
 
   let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
@@ -43,7 +41,6 @@
   let notes = $state(untrack(() => source?.notes ?? '')); // "Копи" in the UI — the post's caption/body text
   let imagePath = $state(untrack(() => source?.image_path ?? null));
   let shared = $state(untrack(() => Boolean(source?.shared)));
-  let color = $state(untrack(() => source?.color ?? null));
   let done = $state(untrack(() => task?.status === 'done'));
   let saving = $state(false);
   let error = $state('');
@@ -74,28 +71,6 @@
     if (hour === '') minute = '';
   });
 
-  // Same-client tasks share one color: fetched once on open (best-effort — a failure
-  // here shouldn't block creating/editing a task, it just means no auto-fill/lock this
-  // time).
-  let clientColorSource = $state([]);
-  onMount(async () => {
-    try {
-      clientColorSource = await getClientColorSource();
-    } catch {
-      // ignore — see comment above
-    }
-  });
-
-  const clientColorMap = $derived(getClientColors(clientColorSource));
-  const trimmedClient = $derived(client.trim());
-  const lockedColor = $derived(trimmedClient ? (clientColorMap.get(trimmedClient) ?? null) : null);
-
-  $effect(() => {
-    if (lockedColor && color !== lockedColor) {
-      color = lockedColor;
-    }
-  });
-
   async function handleSubmit(e) {
     e.preventDefault();
     error = '';
@@ -107,7 +82,6 @@
       time,
       notes: notes || null,
       shared,
-      color,
       client: client || null,
       post_type: postType || null,
       image_path: imagePath,
@@ -217,37 +191,6 @@
 
     <div class="section-divider"></div>
 
-    <label>
-      Цвят (по избор)
-      {#if lockedColor}
-        <p class="client-color-note">Определен от клиента "{trimmedClient}" — важи за всички негови постове.</p>
-      {/if}
-      <div class="color-picker">
-        <button
-          type="button"
-          class="color-bar none"
-          class:selected={color === null}
-          disabled={!!lockedColor}
-          onclick={() => (color = null)}
-        >
-          Без цвят
-        </button>
-        {#each TASK_COLORS as c (c.value)}
-          <button
-            type="button"
-            class="color-bar"
-            class:selected={color === c.value}
-            disabled={!!lockedColor}
-            style="background: {c.bg}; color: {c.fg};"
-            onclick={() => (color = c.value)}
-            aria-label={c.label}
-          >
-            {#if color === c.value}✓{/if}
-          </button>
-        {/each}
-      </div>
-    </label>
-
     <label class="checkbox-label">
       <input type="checkbox" bind:checked={shared} />
       Споделена задача (видима за всички потребители)
@@ -333,46 +276,6 @@
     height: 1px;
     background: #e2e8f0;
     margin: 0.1rem 0;
-  }
-  .color-picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-  }
-  .color-bar {
-    flex-shrink: 0;
-    width: 2.75rem;
-    height: 2rem;
-    border-radius: 6px;
-    border: 2px solid transparent;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.85rem;
-    font-weight: 600;
-  }
-  .color-bar.none {
-    width: auto;
-    padding: 0 0.6rem;
-    background: white;
-    border-color: #cbd5e1;
-    color: #64748b;
-    font-weight: normal;
-  }
-  .color-bar.selected {
-    border-color: #1e293b;
-  }
-  .color-bar:disabled {
-    cursor: not-allowed;
-    opacity: 0.7;
-  }
-  .client-color-note {
-    font-size: 0.75rem;
-    color: #64748b;
-    margin: 0;
-    font-weight: normal;
   }
   input,
   textarea,

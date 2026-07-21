@@ -6,8 +6,9 @@ const router = express.Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 const VALID_STATUS = ['pending', 'done'];
-// Kept in sync by hand with TASK_COLORS in frontend/src/lib/colors.js (values only —
-// the backend doesn't care about hex/labels, just which strings are acceptable).
+// Legacy: the frontend no longer sends `color` (task color is now derived from
+// post_type, see frontend/src/lib/colors.js) — kept here only to validate old data
+// and any direct API callers.
 const VALID_COLORS = [
   'maroon', 'crimson', 'red', 'orange', 'salmon', 'tan', 'yellow',
   'lightgreen', 'green', 'teal', 'blue', 'indigo', 'mauve', 'black',
@@ -94,20 +95,6 @@ function validateTaskInput(body, { partial = false } = {}) {
 
   return { errors, data };
 }
-
-// Client/color for every colored task the user can see, regardless of date — used by
-// the create/edit form to keep same-client tasks color-consistent even when the
-// matching task lives outside whatever date range the calendar currently shows.
-router.get('/client-colors', (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT client, color FROM tasks
-       WHERE (user_id = @userId OR shared = 1) AND color IS NOT NULL
-         AND client IS NOT NULL AND trim(client) != ''`
-    )
-    .all({ userId: req.user.id });
-  res.json(rows);
-});
 
 // The user's own tasks + shared tasks from everyone else.
 router.get('/', (req, res) => {
