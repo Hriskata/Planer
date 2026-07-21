@@ -2,8 +2,11 @@
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
   import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
+  import { createDragToMove } from './dragDrop.svelte.js';
 
-  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate } = $props();
+  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onMove, onCreate } = $props();
+
+  const drag = createDragToMove((task, changes) => onMove(task, changes));
 
   const MAX_CHIPS = 3;
   const today = todayStr();
@@ -67,12 +70,18 @@
   // their own clicks (navigate/edit), so this only fires when the click didn't land on
   // one of them.
   function handleCellClick(e, date) {
+    if (drag.consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('button')) return;
     onCreate(date);
   }
 </script>
 
-<svelte:window onresize={measureRowHeight} />
+<svelte:window
+  onresize={measureRowHeight}
+  onpointermove={drag.handlePointerMove}
+  onpointerup={(e) => drag.handlePointerUp(e, '.day-cell')}
+  onpointercancel={drag.handlePointerCancel}
+/>
 
 <div class="month-calendar">
   <div class="weekday-header">
@@ -92,6 +101,7 @@
         class:weekend={isWeekend(day.date)}
         class:other-month={!day.date.startsWith(referenceMonth)}
         class:today={day.date === today}
+        data-date={day.date}
         style="min-height: {rowHeight}px"
         onclick={(e) => handleCellClick(e, day.date)}
       >
@@ -102,8 +112,13 @@
               class="chip"
               class:done={task.status === 'done'}
               class:dimmed={isDimmed(task)}
+              class:dragging={drag.dragState?.task.id === task.id}
               style={chipStyle(task)}
-              onclick={() => onEdit(task)}
+              onpointerdown={(e) => drag.handlePointerDown(e, task)}
+              onclick={() => {
+                if (drag.consumeSuppressedClick()) return;
+                onEdit(task);
+              }}
             >
               {#if task.time}<span class="chip-time">{task.time}</span>{/if}
               <span class="chip-title">{task.title}</span>
@@ -116,6 +131,12 @@
       </div>
     {/each}
   </div>
+
+  {#if drag.dragState?.moved}
+    <div class="drag-ghost" style="left: {drag.dragState.x}px; top: {drag.dragState.y}px;">
+      {drag.dragState.task.title}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -200,6 +221,14 @@
     gap: 0.25rem;
     align-items: baseline;
     min-width: 0;
+    touch-action: none;
+    /* Stops iOS's long-press magnifier/text-selection callout from hijacking a drag gesture. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .chip.dragging {
+    opacity: 0.3;
   }
   .chip.done {
     background: #94a3b8;
@@ -228,5 +257,21 @@
     text-align: left;
     cursor: pointer;
     padding: 0.1rem 0.3rem;
+  }
+  .drag-ghost {
+    position: fixed;
+    transform: translate(-50%, -130%);
+    pointer-events: none;
+    background: #1d4ed8;
+    color: white;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 50;
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

@@ -2,8 +2,11 @@
   import { displayDate, weekdayNameShort, isWeekend } from './date.js';
   import { colorForPostType } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
+  import { createDragToMove } from './dragDrop.svelte.js';
 
-  let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onCreate } = $props();
+  let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onMove, onCreate } = $props();
+
+  const drag = createDragToMove((task, changes) => onMove(task, changes));
 
   // Done tasks always render gray+struck-through (CSS class) regardless of post-type
   // color — an inline style would otherwise win the cascade over that class, so this
@@ -59,12 +62,18 @@
   // here, so a click just creates an untimed post for that day — the user sets a time
   // in the form if they want one.
   function handleColumnClick(e, date) {
+    if (drag.consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('.post')) return;
     onCreate(date, null);
   }
 </script>
 
-<svelte:window onresize={measureBodyHeight} />
+<svelte:window
+  onresize={measureBodyHeight}
+  onpointermove={drag.handlePointerMove}
+  onpointerup={(e) => drag.handlePointerUp(e, '.day-column')}
+  onpointercancel={drag.handlePointerCancel}
+/>
 
 <div class="calendar">
   <!-- Single horizontally-scrolling wrapper so the header and post columns stay
@@ -93,6 +102,7 @@
         <div
           class="day-column"
           class:weekend={isWeekend(day.date)}
+          data-date={day.date}
           style="height: {bodyHeight}px"
           onclick={(e) => handleColumnClick(e, day.date)}
         >
@@ -106,10 +116,15 @@
               class="post"
               class:done={task.status === 'done'}
               class:dimmed={isDimmed(task)}
+              class:dragging={drag.dragState?.task.id === task.id}
               style={tileColorStyle(task)}
               role="button"
               tabindex="0"
-              onclick={() => onEdit(task)}
+              onpointerdown={(e) => drag.handlePointerDown(e, task)}
+              onclick={() => {
+                if (drag.consumeSuppressedClick()) return;
+                onEdit(task);
+              }}
               onkeydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(task); }
               }}
@@ -137,6 +152,12 @@
       {/each}
     </div>
   </div>
+
+  {#if drag.dragState?.moved}
+    <div class="drag-ghost" style="left: {drag.dragState.x}px; top: {drag.dragState.y}px;">
+      {postLabel(drag.dragState.task)}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -215,6 +236,11 @@
     gap: 0.3rem;
     font-size: 0.8rem;
     line-height: 1.2;
+    touch-action: none;
+    /* Stops iOS's long-press magnifier/text-selection callout from hijacking a drag gesture. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .post.done {
     background: #94a3b8;
@@ -224,6 +250,9 @@
   .post.dimmed {
     opacity: 0.35;
     filter: grayscale(60%);
+  }
+  .post.dragging {
+    opacity: 0.3;
   }
   .post-label {
     overflow: hidden;
@@ -273,5 +302,21 @@
     color: #94a3b8;
     text-align: center;
     padding: 0.5rem 0;
+  }
+  .drag-ghost {
+    position: fixed;
+    transform: translate(-50%, -130%);
+    pointer-events: none;
+    background: #1d4ed8;
+    color: white;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 50;
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 </style>

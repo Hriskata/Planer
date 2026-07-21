@@ -144,6 +144,17 @@
     }
   }
 
+  // Drag-and-drop in WeekCalendar/MonthCalendar only ever changes the date — there's no
+  // hour grid to express a new time in anymore.
+  async function handleMoveTask(task, changes) {
+    try {
+      await updateTask(task.id, changes);
+      await loadTasks({ silent: true });
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
   function handleFormSaved() {
     showForm = false;
     loadTasks({ silent: true });
@@ -242,6 +253,7 @@
       searchFilter={activeFilters}
       onEdit={openEditForm}
       onToggle={handleToggleStatus}
+      onMove={handleMoveTask}
       onCreate={handleGridCreate}
     />
   {:else}
@@ -253,6 +265,7 @@
       searchFilter={activeFilters}
       onEdit={openEditForm}
       onDayClick={handleDayClick}
+      onMove={handleMoveTask}
       onCreate={handleGridCreate}
     />
   {/if}
