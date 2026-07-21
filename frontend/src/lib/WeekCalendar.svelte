@@ -374,6 +374,14 @@
     filter: grayscale(60%);
   }
   .grid-scroll-y {
+    /* CSS quirk: setting only overflow-y silently promotes overflow-x to "auto" too
+       (per spec, "visible" paired with a non-visible axis behaves as "auto"), which
+       turned this into its OWN independent horizontal scroll container — separate from
+       .scroll-x above, so dragging one didn't move the other. width: max-content sizes
+       this element to its content's natural width so no horizontal overflow happens
+       here at all; the real horizontal scrolling then only ever happens once, on
+       .scroll-x, keeping the header row and the hour grid moving together. */
+    width: max-content;
     max-height: 60vh; /* fallback for browsers without dvh support */
     max-height: 60dvh;
     overflow-y: auto;
