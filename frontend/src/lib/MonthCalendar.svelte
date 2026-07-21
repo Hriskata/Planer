@@ -1,9 +1,9 @@
 <script>
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
   import { colorOf } from './colors.js';
-  import { taskMatchesAny } from './search.js';
+  import { taskMatchesFilters, hasActiveFilters } from './search.js';
 
-  let { monthDates, referenceMonth, tasks, searchFilter = [], onEdit, onDayClick, onCreate } = $props();
+  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate } = $props();
 
   const MAX_CHIPS = 3;
   const today = todayStr();
@@ -36,9 +36,9 @@
       const dayTasks = tasks
         .filter((t) => t.date === date)
         .sort((a, b) => {
-          if (searchFilter.length > 0) {
-            const aMatch = taskMatchesAny(a, searchFilter);
-            const bMatch = taskMatchesAny(b, searchFilter);
+          if (hasActiveFilters(searchFilter)) {
+            const aMatch = taskMatchesFilters(a, searchFilter);
+            const bMatch = taskMatchesFilters(b, searchFilter);
             if (aMatch !== bMatch) return aMatch ? -1 : 1;
           }
           return (a.time || '99:99').localeCompare(b.time || '99:99');
@@ -59,7 +59,7 @@
   }
 
   function isDimmed(task) {
-    return searchFilter.length > 0 && !taskMatchesAny(task, searchFilter);
+    return hasActiveFilters(searchFilter) && !taskMatchesFilters(task, searchFilter);
   }
 
   // Click-to-create on empty cell space — the day-number/chip/"+more" buttons handle

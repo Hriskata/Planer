@@ -3,8 +3,7 @@
   import { createTask, updateTask, deleteTask, getClientColorSource, uploadImage } from './api.js';
   import { TASK_COLORS } from './colors.js';
   import { getClientColors } from './search.js';
-
-  const POST_TYPES = ['Story', 'Post', 'Reel', 'Carrousel'];
+  import { POST_TYPES } from './postTypes.js';
 
   let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
 
@@ -209,6 +208,13 @@
       {#if imageError}<p class="error">{imageError}</p>{/if}
     </div>
 
+    {#if task}
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={done} />
+        Завършена
+      </label>
+    {/if}
+
     <div class="section-divider"></div>
 
     <label>
@@ -246,12 +252,6 @@
       <input type="checkbox" bind:checked={shared} />
       Споделена задача (видима за всички потребители)
     </label>
-    {#if task}
-      <label class="checkbox-label">
-        <input type="checkbox" bind:checked={done} />
-        Завършена
-      </label>
-    {/if}
 
     {#if error}<p class="error">{error}</p>{/if}
     <div class="form-actions">

@@ -1,9 +1,9 @@
 <script>
   import { displayDate, weekdayNameShort, isWeekend } from './date.js';
   import { colorOf } from './colors.js';
-  import { taskMatchesAny } from './search.js';
+  import { taskMatchesFilters, hasActiveFilters } from './search.js';
 
-  let { weekDates, tasks, searchFilter = [], onEdit, onCreate } = $props();
+  let { weekDates, tasks, searchFilter = {}, onEdit, onCreate } = $props();
 
   // Done tasks always render gray+struck-through (CSS class) regardless of color — an
   // inline style would otherwise win the cascade over that class, so this returns ''
@@ -14,7 +14,15 @@
   }
 
   function isDimmed(task) {
-    return searchFilter.length > 0 && !taskMatchesAny(task, searchFilter);
+    return hasActiveFilters(searchFilter) && !taskMatchesFilters(task, searchFilter);
+  }
+
+  // "Client - post type" is the primary label per the content-planning layout; falls
+  // back to the title when neither is set (e.g. older tasks from before these fields
+  // existed) so a post never renders with a blank label.
+  function postLabel(task) {
+    const parts = [task.client, task.post_type].map((v) => (v || '').trim()).filter(Boolean);
+    return parts.length > 0 ? parts.join(' - ') : task.title;
   }
 
   // Untimed posts (no time set) sort first, then timed posts chronologically.
@@ -29,8 +37,8 @@
 
   // Fills the rest of the browser window below the header instead of a fixed vh
   // percentage, so the calendar actually scales with the real screen size (laptop,
-  // external monitor, etc.) rather than an arbitrary fraction of it. Re-measured on
-  // resize since the chrome above (search bar, tag chips) can wrap to more lines.
+  // external monitor, etc.). Re-measured on resize since the chrome above (search bar,
+  // filter dropdowns) can wrap to more lines.
   const MIN_BODY_HEIGHT = 240;
   let gridEl;
   let bodyHeight = $state(400);
@@ -95,8 +103,10 @@
               style={tileColorStyle(task)}
               onclick={() => onEdit(task)}
             >
-              {#if task.time}<span class="post-time">{task.time}</span>{/if}
-              <span class="post-title">{task.title}</span>
+              <span class="post-label">{postLabel(task)}</span>
+              {#if task.image_path}
+                <img class="post-image" src={task.image_path} alt="" loading="lazy" />
+              {/if}
             </button>
           {:else}
             <p class="empty-hint">Няма постове</p>
@@ -121,7 +131,7 @@
   .grid {
     display: grid;
     /* minmax(0, 1fr), not plain 1fr: grid tracks default to a minimum of `auto`, which
-       on narrow screens lets unbroken post-title text (white-space: nowrap) push each
+       on narrow screens lets unbroken post-label text (white-space: nowrap) push each
        column wider than its fair share, overflowing the whole grid past the viewport
        with no scroll container to reach it (same overflow quirk as MonthCalendar). Both
        grids share this exact template so header and post columns stay aligned — neither
@@ -160,7 +170,7 @@
     padding: 0.4rem;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.4rem;
     cursor: pointer;
     box-sizing: border-box;
   }
@@ -175,12 +185,12 @@
     color: #1d4ed8;
     border: none;
     border-radius: 6px;
-    padding: 0.35rem 0.5rem;
+    padding: 0.35rem;
     text-align: left;
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
+    gap: 0.3rem;
     font-size: 0.8rem;
     line-height: 1.2;
   }
@@ -193,17 +203,30 @@
     opacity: 0.35;
     filter: grayscale(60%);
   }
-  .post-time {
-    font-size: 0.7rem;
-    font-weight: 600;
-    opacity: 0.85;
-  }
-  .post-title {
+  .post-label {
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
+    font-weight: 600;
+  }
+  /* Uniform tile size across every post, on every day column, regardless of the
+     original photo's dimensions — object-fit: cover crops to fill a fixed square
+     instead of stretching/letterboxing, matching the Instagram-grid look these post
+     types (Story/Post/Reel/Carrousel) come from. aspect-ratio (not a fixed px height)
+     keeps it proportional to the day column's own width, which itself already scales
+     with screen size. */
+  .post-image {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  .post.done .post-image {
+    filter: grayscale(100%);
+    opacity: 0.75;
   }
   .empty-hint {
     margin: 0;
