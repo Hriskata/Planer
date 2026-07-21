@@ -241,6 +241,7 @@
       {tasks}
       searchFilter={activeFilters}
       onEdit={openEditForm}
+      onToggle={handleToggleStatus}
       onCreate={handleGridCreate}
     />
   {:else}

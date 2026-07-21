@@ -3,7 +3,7 @@
   import { colorOf } from './colors.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
 
-  let { weekDates, tasks, searchFilter = {}, onEdit, onCreate } = $props();
+  let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onCreate } = $props();
 
   // Done tasks always render gray+struck-through (CSS class) regardless of color — an
   // inline style would otherwise win the cascade over that class, so this returns ''
@@ -53,12 +53,12 @@
     measureBodyHeight();
   });
 
-  // Click-to-create on empty column space — the post buttons handle their own clicks
-  // (edit), so this only fires when the click didn't land on one. No hour grid here, so
-  // a click just creates an untimed post for that day — the user sets a time in the
-  // form if they want one.
+  // Click-to-create on empty column space — the posts handle their own clicks (edit,
+  // toggle-done), so this only fires when the click didn't land on one. No hour grid
+  // here, so a click just creates an untimed post for that day — the user sets a time
+  // in the form if they want one.
   function handleColumnClick(e, date) {
-    if (e.target.closest('button')) return;
+    if (e.target.closest('.post')) return;
     onCreate(date, null);
   }
 </script>
@@ -96,18 +96,39 @@
           onclick={(e) => handleColumnClick(e, day.date)}
         >
           {#each day.tasks as task (task.id)}
-            <button
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- A plain <button> can't contain the "Завършена" checkbox below (nested
+                 interactive controls are invalid HTML and double-fire clicks) — this
+                 div carries the same edit-on-click/keyboard behavior a button gives for
+                 free. -->
+            <div
               class="post"
               class:done={task.status === 'done'}
               class:dimmed={isDimmed(task)}
               style={tileColorStyle(task)}
+              role="button"
+              tabindex="0"
               onclick={() => onEdit(task)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(task); }
+              }}
             >
               <span class="post-label">{postLabel(task)}</span>
               {#if task.image_path}
                 <img class="post-image" src={task.image_path} alt="" loading="lazy" />
               {/if}
-            </button>
+              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+              <!-- Stops the click from bubbling to the tile's own onclick (which opens
+                   the edit form) — toggling done shouldn't also open the form. -->
+              <label class="post-done" onclick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={task.status === 'done'}
+                  onchange={() => onToggle(task)}
+                />
+                Завършена
+              </label>
+            </div>
           {:else}
             <p class="empty-hint">Няма постове</p>
           {/each}
@@ -227,6 +248,22 @@
   .post.done .post-image {
     filter: grayscale(100%);
     opacity: 0.75;
+  }
+  .post:focus-visible {
+    outline: 2px solid #1e293b;
+    outline-offset: 1px;
+  }
+  .post-done {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: normal;
+    cursor: pointer;
+  }
+  .post-done input {
+    margin: 0;
+    cursor: pointer;
   }
   .empty-hint {
     margin: 0;
