@@ -233,16 +233,17 @@
     font-weight: 600;
   }
   /* Uniform tile size across every post, on every day column, regardless of the
-     original photo's dimensions — object-fit: cover crops to fill a fixed square
-     instead of stretching/letterboxing, matching the Instagram-grid look these post
-     types (Story/Post/Reel/Carrousel) come from. aspect-ratio (not a fixed px height)
-     keeps it proportional to the day column's own width, which itself already scales
-     with screen size. */
+     original photo's dimensions — aspect-ratio (not a fixed px height) keeps the box
+     proportional to the day column's own width, which itself already scales with
+     screen size. object-fit: contain shrinks the photo to fit inside that box without
+     cropping it (unlike cover); background: inherit fills the leftover letterboxed
+     space with the same color as the tile itself instead of showing through blank. */
   .post-image {
     display: block;
     width: 100%;
     aspect-ratio: 1 / 1;
-    object-fit: cover;
+    object-fit: contain;
+    background: inherit;
     border-radius: 4px;
   }
   .post.done .post-image {
