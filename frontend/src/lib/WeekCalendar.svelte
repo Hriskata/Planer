@@ -377,11 +377,16 @@
     /* CSS quirk: setting only overflow-y silently promotes overflow-x to "auto" too
        (per spec, "visible" paired with a non-visible axis behaves as "auto"), which
        turned this into its OWN independent horizontal scroll container — separate from
-       .scroll-x above, so dragging one didn't move the other. width: max-content sizes
-       this element to its content's natural width so no horizontal overflow happens
-       here at all; the real horizontal scrolling then only ever happens once, on
-       .scroll-x, keeping the header row and the hour grid moving together. */
-    width: max-content;
+       .scroll-x above, so dragging one didn't move the other. width: max-content alone
+       fixed that on mobile (narrow viewport, content wider than screen) but broke wide
+       desktop screens: capped at the content's minimum, it stopped stretching to fill
+       the available width the way .header-row still does, so the hour grid stayed
+       narrow and the scrollbar landed mid-row instead of at the true right edge.
+       max(100%, max-content) takes whichever is larger: on mobile that's max-content
+       (636px, wider than the ~396px viewport, so it overflows .scroll-x — the desired
+       single horizontal scroll owner); on desktop that's 100% (the available width is
+       wider than the content's minimum, so it stretches to fill it, same as the header). */
+    width: max(100%, max-content);
     max-height: 60vh; /* fallback for browsers without dvh support */
     max-height: 60dvh;
     overflow-y: auto;
