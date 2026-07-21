@@ -1,11 +1,11 @@
 <script>
   import { colorOf } from './colors.js';
-  import { taskMatches } from './search.js';
+  import { taskMatchesAny } from './search.js';
 
-  let { task, searchFilter = '', onToggle, onEdit, onDelete } = $props();
+  let { task, searchFilter = [], onToggle, onEdit, onDelete } = $props();
 
   const swatch = $derived(colorOf(task.color));
-  const dimmed = $derived(searchFilter && !taskMatches(task, searchFilter));
+  const dimmed = $derived(searchFilter.length > 0 && !taskMatchesAny(task, searchFilter));
 </script>
 
 <li

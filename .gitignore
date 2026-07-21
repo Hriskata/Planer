@@ -1,3 +1,4 @@
 .env
 /backups/
+/uploads/
 .claude/settings.local.json

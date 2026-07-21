@@ -29,19 +29,32 @@
   let newTaskDate = $state(todayStr());
   let newTaskTime = $state(null);
   let searchQuery = $state('');
+  let selectedTags = $state([]); // multi-select — toggled independently, combined with OR
   let searchEnabled = $state(true);
 
   const weekDates = $derived(getWeekDates(currentDate));
   const monthDates = $derived(getMonthGridDates(currentDate));
   const referenceMonth = $derived(currentDate.slice(0, 7));
-  // Empty when the filter is off (via the toggle) or there's nothing typed — passed
-  // down as '' means "no filter" to every view, so this is the single on/off switch.
-  const activeFilter = $derived(searchEnabled ? searchQuery.trim() : '');
+  // Empty array when the filter is off (via the toggle) or nothing is active — passed
+  // down as [] means "no filter" to every view, so this is the single on/off switch.
+  // Typed text and any number of selected tag chips all combine via OR (taskMatchesAny).
+  const activeFilters = $derived(
+    searchEnabled ? [...selectedTags, ...(searchQuery.trim() ? [searchQuery.trim()] : [])] : []
+  );
   const availableTags = $derived(extractTags(tasks));
 
+  function toggleTag(tag) {
+    selectedTags = selectedTags.includes(tag) ? selectedTags.filter((t) => t !== tag) : [...selectedTags, tag];
+  }
+
+  function clearFilters() {
+    searchQuery = '';
+    selectedTags = [];
+  }
+
   // silent=true skips the `loading` flag for refreshes after a mutation (toggle/delete/
-  // move/save) — otherwise the {#if loading} branch below briefly unmounts WeekCalendar/
-  // MonthCalendar, which re-triggers WeekCalendar's onMount and resets its scroll to 7:00.
+  // save) — otherwise the {#if loading} branch below briefly unmounts WeekCalendar/
+  // MonthCalendar for no visible reason.
   async function loadTasks({ silent = false } = {}) {
     if (!silent) loading = true;
     error = '';
@@ -136,15 +149,6 @@
     showForm = false;
     loadTasks({ silent: true });
   }
-
-  async function handleMoveTask(task, changes) {
-    try {
-      await updateTask(task.id, changes);
-      await loadTasks({ silent: true });
-    } catch (err) {
-      error = err.message;
-    }
-  }
 </script>
 
 <header>
@@ -186,20 +190,23 @@
   </label>
 </div>
 
-{#if availableTags.length > 0}
+{#if availableTags.length > 0 || selectedTags.length > 0}
   <div class="tag-chips">
     {#each availableTags as tag (tag)}
       <button
         class="tag-chip"
-        class:active={searchQuery === `[${tag}]`}
+        class:active={selectedTags.includes(tag)}
         onclick={() => {
-          searchQuery = searchQuery === `[${tag}]` ? '' : `[${tag}]`;
+          toggleTag(tag);
           searchEnabled = true;
         }}
       >
         [{tag}]
       </button>
     {/each}
+    {#if searchQuery || selectedTags.length > 0}
+      <button class="tag-chip clear-all" onclick={clearFilters}>Изчисти всички</button>
+    {/if}
   </div>
 {/if}
 
@@ -218,7 +225,7 @@
       {#each tasks as task (task.id)}
         <TaskItem
           {task}
-          searchFilter={activeFilter}
+          searchFilter={activeFilters}
           onToggle={() => handleToggleStatus(task)}
           onEdit={() => openEditForm(task)}
           onDelete={() => handleDelete(task)}
@@ -229,9 +236,8 @@
     <WeekCalendar
       {weekDates}
       {tasks}
-      searchFilter={activeFilter}
+      searchFilter={activeFilters}
       onEdit={openEditForm}
-      onMove={handleMoveTask}
       onCreate={handleGridCreate}
     />
   {:else}
@@ -240,7 +246,7 @@
       {monthDates}
       {referenceMonth}
       {tasks}
-      searchFilter={activeFilter}
+      searchFilter={activeFilters}
       onEdit={openEditForm}
       onDayClick={handleDayClick}
       onCreate={handleGridCreate}
@@ -329,7 +335,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0 1rem 0.5rem;
-    max-width: 900px;
+    max-width: min(1600px, 96vw);
     margin: 0 auto;
     flex-wrap: wrap;
   }
@@ -374,7 +380,7 @@
     flex-wrap: wrap;
     gap: 0.4rem;
     padding: 0 1rem 0.75rem;
-    max-width: 900px;
+    max-width: min(1600px, 96vw);
     margin: 0 auto;
   }
   .tag-chip {
@@ -391,10 +397,17 @@
     color: white;
     border-color: #2563eb;
   }
+  .tag-chip.clear-all {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    text-decoration: underline;
+    padding: 0.2rem 0.3rem;
+  }
   main {
     padding: 0 1rem 5rem;
     padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
-    max-width: 900px;
+    max-width: min(1600px, 96vw);
     margin: 0 auto;
   }
   h2 {

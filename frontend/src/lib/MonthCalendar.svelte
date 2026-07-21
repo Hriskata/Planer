@@ -1,12 +1,33 @@
 <script>
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
   import { colorOf } from './colors.js';
-  import { taskMatches } from './search.js';
+  import { taskMatchesAny } from './search.js';
 
-  let { monthDates, referenceMonth, tasks, searchFilter = '', onEdit, onDayClick, onCreate } = $props();
+  let { monthDates, referenceMonth, tasks, searchFilter = [], onEdit, onDayClick, onCreate } = $props();
 
   const MAX_CHIPS = 3;
   const today = todayStr();
+
+  // Fills the rest of the browser window with the month grid instead of a fixed
+  // per-row height, so it actually scales with the real screen size (laptop, external
+  // monitor, etc.). Re-measured on resize and whenever the row count changes (a month
+  // spans 5 or 6 week-rows depending on which days it starts/ends on).
+  const MIN_ROW_HEIGHT = 90;
+  let gridEl;
+  let rowHeight = $state(MIN_ROW_HEIGHT);
+
+  function measureRowHeight() {
+    if (!gridEl) return;
+    const rows = monthDates.length / 7;
+    const top = gridEl.getBoundingClientRect().top;
+    const available = window.innerHeight - top - 16;
+    rowHeight = Math.max(MIN_ROW_HEIGHT, Math.floor(available / rows));
+  }
+
+  $effect(() => {
+    monthDates;
+    measureRowHeight();
+  });
 
   const dayData = $derived(
     monthDates.map((date) => {
@@ -15,9 +36,9 @@
       const dayTasks = tasks
         .filter((t) => t.date === date)
         .sort((a, b) => {
-          if (searchFilter) {
-            const aMatch = taskMatches(a, searchFilter);
-            const bMatch = taskMatches(b, searchFilter);
+          if (searchFilter.length > 0) {
+            const aMatch = taskMatchesAny(a, searchFilter);
+            const bMatch = taskMatchesAny(b, searchFilter);
             if (aMatch !== bMatch) return aMatch ? -1 : 1;
           }
           return (a.time || '99:99').localeCompare(b.time || '99:99');
@@ -38,7 +59,7 @@
   }
 
   function isDimmed(task) {
-    return searchFilter && !taskMatches(task, searchFilter);
+    return searchFilter.length > 0 && !taskMatchesAny(task, searchFilter);
   }
 
   // Click-to-create on empty cell space — the day-number/chip/"+more" buttons handle
@@ -50,13 +71,15 @@
   }
 </script>
 
+<svelte:window onresize={measureRowHeight} />
+
 <div class="month-calendar">
   <div class="weekday-header">
     {#each monthDates.slice(0, 7) as date (date)}
       <div class="weekday-label" class:weekend={isWeekend(date)}>{weekdayNameShort(date)}</div>
     {/each}
   </div>
-  <div class="month-grid">
+  <div class="month-grid" bind:this={gridEl}>
     {#each dayData as day (day.date)}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -68,6 +91,7 @@
         class:weekend={isWeekend(day.date)}
         class:other-month={!day.date.startsWith(referenceMonth)}
         class:today={day.date === today}
+        style="min-height: {rowHeight}px"
         onclick={(e) => handleCellClick(e, day.date)}
       >
         <button class="day-number" onclick={() => onDayClick(day.date)}>{Number(day.date.slice(8, 10))}</button>

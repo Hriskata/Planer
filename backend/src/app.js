@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const { requireAuth } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const tasksRouter = require('./routes/tasks');
+const uploadsRouter = require('./routes/uploads');
 
 const app = express();
 
@@ -22,6 +23,12 @@ if (process.env.CORS_ORIGIN) {
 // /login is public (it's how you get a token) — doesn't go through requireAuth.
 app.use('/api/auth', authRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
+app.use('/api/uploads', requireAuth, uploadsRouter);
+
+// Uploaded task images. Deliberately public (not behind requireAuth) — a plain <img
+// src> can't attach the JWT header, and filenames are random UUIDs, not guessable.
+// Fine for this app's scale/trust model; revisit if that stops being true.
+app.use('/uploads', express.static(process.env.UPLOADS_DIR || './uploads'));
 
 // Frontend static files (Svelte build, Stage 3). frontend/ and backend/ are
 // sibling folders, hence two levels up. The check guards against crashing

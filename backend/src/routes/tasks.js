@@ -53,6 +53,19 @@ function validateTaskInput(body, { partial = false } = {}) {
     data.notes = null;
   }
 
+  // client, post_type, image_path: simple optional text fields, same shape as notes.
+  for (const field of ['client', 'post_type', 'image_path']) {
+    if (body[field] !== undefined && body[field] !== null) {
+      if (typeof body[field] !== 'string') {
+        errors.push(`${field} трябва да е текст.`);
+      } else {
+        data[field] = body[field];
+      }
+    } else if (!partial) {
+      data[field] = null;
+    }
+  }
+
   if (body.status !== undefined) {
     if (!VALID_STATUS.includes(body.status)) {
       errors.push(`status трябва да е едно от: ${VALID_STATUS.join(', ')}.`);
@@ -111,7 +124,8 @@ router.get('/', (req, res) => {
   // is an inclusive range (week/month views) — both can be combined, though in practice
   // the frontend only ever sends one or the other.
   const baseQuery = `
-    SELECT id, user_id, title, notes, date, time, status, shared, color, created_at, updated_at
+    SELECT id, user_id, title, notes, date, time, status, shared, color,
+           client, post_type, image_path, created_at, updated_at
     FROM tasks
     WHERE (user_id = @userId OR shared = 1)
       AND (@date IS NULL OR date = @date)
@@ -137,8 +151,8 @@ router.post('/', (req, res) => {
 
   const result = db
     .prepare(
-      `INSERT INTO tasks (user_id, title, notes, date, time, status, shared, color)
-       VALUES (@userId, @title, @notes, @date, @time, @status, @shared, @color)`
+      `INSERT INTO tasks (user_id, title, notes, date, time, status, shared, color, client, post_type, image_path)
+       VALUES (@userId, @title, @notes, @date, @time, @status, @shared, @color, @client, @post_type, @image_path)`
     )
     .run({ userId: req.user.id, ...data });
 
@@ -166,7 +180,8 @@ router.put('/:id', (req, res) => {
   // on a named parameter in the object that has no matching placeholder.
   db.prepare(
     `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
-       status = @status, shared = @shared, color = @color, updated_at = datetime('now')
+       status = @status, shared = @shared, color = @color, client = @client,
+       post_type = @post_type, image_path = @image_path, updated_at = datetime('now')
      WHERE id = @id`
   ).run({
     title: merged.title,
@@ -176,6 +191,9 @@ router.put('/:id', (req, res) => {
     status: merged.status,
     shared: merged.shared,
     color: merged.color,
+    client: merged.client,
+    post_type: merged.post_type,
+    image_path: merged.image_path,
     id: task.id,
   });
 

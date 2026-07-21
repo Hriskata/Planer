@@ -7,6 +7,14 @@ export function taskMatches(task, query) {
   return (task.title || '').toLowerCase().includes(q) || (task.notes || '').toLowerCase().includes(q);
 }
 
+// Multiple filters combine with OR — a task stands out if it matches ANY active
+// filter (free-typed text and/or one or more selected [tag] chips at once). No active
+// filters means no filtering at all (everything matches, nothing dims).
+export function taskMatchesAny(task, filters) {
+  if (!filters || filters.length === 0) return true;
+  return filters.some((f) => taskMatches(task, f));
+}
+
 const TAG_RE = /\[([^[\]]+)\]/g;
 
 // Pulls the distinct set of [tag] names out of whatever tasks are currently loaded, so

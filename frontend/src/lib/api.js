@@ -74,6 +74,24 @@ export function getTagColorSource() {
   return request('/tasks/tag-colors');
 }
 
+// Separate from request() on purpose: file uploads need multipart/form-data with a
+// browser-generated boundary, which only happens if we DON'T set Content-Type
+// ourselves (request() always sends application/json). Returns { path }.
+export async function uploadImage(file) {
+  const current = get(auth);
+  const formData = new FormData();
+  formData.append('image', file);
+  const headers = {};
+  if (current?.token) headers.Authorization = `Bearer ${current.token}`;
+
+  const res = await fetch('/api/uploads', { method: 'POST', body: formData, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Грешка ${res.status}`);
+  }
+  return res.json();
+}
+
 export function createTask(data) {
   return request('/tasks', { method: 'POST', body: JSON.stringify(data) });
 }

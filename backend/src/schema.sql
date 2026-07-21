@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   status TEXT NOT NULL DEFAULT 'pending',   -- 'pending' | 'done'
   shared INTEGER NOT NULL DEFAULT 0,        -- 0 = personal task, 1 = visible to all users
   color TEXT,                               -- 'green' | 'yellow' | 'red' | NULL (no color)
+  client TEXT,
+  post_type TEXT,
+  image_path TEXT,                          -- e.g. '/uploads/<uuid>.jpg', or NULL
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

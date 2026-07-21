@@ -1,6 +1,6 @@
 <script>
   import { untrack, onMount } from 'svelte';
-  import { createTask, updateTask, deleteTask, getTagColorSource } from './api.js';
+  import { createTask, updateTask, deleteTask, getTagColorSource, uploadImage } from './api.js';
   import { TASK_COLORS } from './colors.js';
   import { extractTags, getTagColors } from './search.js';
 
@@ -28,7 +28,9 @@
   // every time MainView shows it) — it deliberately does NOT follow later changes to
   // the prop, or it would overwrite whatever the user is typing.
   // untrack() confirms to Svelte that this is intentional, not missed reactivity.
+  let client = $state(untrack(() => source?.client ?? ''));
   let title = $state(untrack(() => source?.title ?? ''));
+  let postType = $state(untrack(() => source?.post_type ?? ''));
   let date = $state(untrack(() => source?.date ?? defaultDate));
   const [initHour, initMinute] = untrack(() => {
     if (source?.time) return snapTo15(...source.time.split(':'));
@@ -37,12 +39,32 @@
   });
   let hour = $state(initHour);
   let minute = $state(initMinute);
-  let notes = $state(untrack(() => source?.notes ?? ''));
+  let notes = $state(untrack(() => source?.notes ?? '')); // "Копи" in the UI — the post's caption/body text
+  let imagePath = $state(untrack(() => source?.image_path ?? null));
   let shared = $state(untrack(() => Boolean(source?.shared)));
   let color = $state(untrack(() => source?.color ?? null));
   let done = $state(untrack(() => task?.status === 'done'));
   let saving = $state(false);
   let error = $state('');
+
+  let imageUploading = $state(false);
+  let imageError = $state('');
+
+  async function handleImageSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    imageError = '';
+    imageUploading = true;
+    try {
+      const result = await uploadImage(file);
+      imagePath = result.path;
+    } catch (err) {
+      imageError = err.message;
+    } finally {
+      imageUploading = false;
+      e.target.value = ''; // lets the same file be picked again later if removed
+    }
+  }
 
   // Picking an hour defaults the minute to :00; clearing the hour clears the minute too
   // (both empty = no time set = an all-day task).
@@ -77,7 +99,18 @@
     error = '';
     saving = true;
     const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
-    const payload = { title, date, time, notes: notes || null, shared, color, status: done ? 'done' : 'pending' };
+    const payload = {
+      title,
+      date,
+      time,
+      notes: notes || null,
+      shared,
+      color,
+      client: client || null,
+      post_type: postType || null,
+      image_path: imagePath,
+      status: done ? 'done' : 'pending',
+    };
     try {
       if (task) {
         await updateTask(task.id, payload);
@@ -108,33 +141,70 @@
 
 <div class="overlay" onclick={(e) => { if (e.target === e.currentTarget) onCancel(); }} role="presentation">
   <form onsubmit={handleSubmit}>
-    <h2>{task ? 'Редакция на задача' : 'Нова задача'}</h2>
+    <h2>{task ? 'Редакция на пост' : 'Нов пост'}</h2>
+
+    <label>
+      Клиент
+      <input type="text" bind:value={client} placeholder="Име на клиента" />
+    </label>
+
     <label>
       Заглавие
       <input type="text" bind:value={title} required />
     </label>
+
     <label>
-      Дата
-      <input type="date" bind:value={date} required />
+      Тип пост
+      <input type="text" bind:value={postType} placeholder="напр. Instagram Story, Ролка, Статия..." />
     </label>
+
+    <div class="row">
+      <label>
+        Дата
+        <input type="date" bind:value={date} required />
+      </label>
+      <label class="time-field">
+        Час (по избор)
+        <div class="time-select">
+          <select bind:value={hour}>
+            <option value="">— —</option>
+            {#each HOURS as h}<option value={h}>{h}</option>{/each}
+          </select>
+          <span>:</span>
+          <select bind:value={minute} disabled={hour === ''}>
+            {#if hour === ''}<option value="">— —</option>{/if}
+            {#each MINUTES as m}<option value={m}>{m}</option>{/each}
+          </select>
+        </div>
+      </label>
+    </div>
+
     <label>
-      Час (по избор)
-      <div class="time-select">
-        <select bind:value={hour}>
-          <option value="">— —</option>
-          {#each HOURS as h}<option value={h}>{h}</option>{/each}
-        </select>
-        <span>:</span>
-        <select bind:value={minute} disabled={hour === ''}>
-          {#if hour === ''}<option value="">— —</option>{/if}
-          {#each MINUTES as m}<option value={m}>{m}</option>{/each}
-        </select>
-      </div>
+      Копи
+      <textarea bind:value={notes} rows="4" placeholder="Текст на поста..."></textarea>
     </label>
-    <label>
-      Бележки
-      <textarea bind:value={notes} rows="3"></textarea>
-    </label>
+
+    <div class="field">
+      <span class="field-label">Снимка (по избор)</span>
+      {#if imagePath}
+        <div class="image-preview">
+          <img src={imagePath} alt="Преглед на качената снимка" />
+          <button type="button" class="remove-image" onclick={() => (imagePath = null)} aria-label="Премахни снимката">
+            ×
+          </button>
+        </div>
+      {:else}
+        <label class="upload-dropzone" class:uploading={imageUploading}>
+          <input type="file" accept="image/*" onchange={handleImageSelect} disabled={imageUploading} hidden />
+          <span class="upload-icon">📷</span>
+          {imageUploading ? 'Качване...' : 'Качи снимка'}
+        </label>
+      {/if}
+      {#if imageError}<p class="error">{imageError}</p>{/if}
+    </div>
+
+    <div class="section-divider"></div>
+
     <label>
       Цвят (по избор)
       {#if lockedColor}
@@ -165,6 +235,7 @@
         {/each}
       </div>
     </label>
+
     <label class="checkbox-label">
       <input type="checkbox" bind:checked={shared} />
       Споделена задача (видима за всички потребители)
@@ -175,6 +246,7 @@
         Завършена
       </label>
     {/if}
+
     {#if error}<p class="error">{error}</p>{/if}
     <div class="form-actions">
       {#if task}
@@ -201,28 +273,60 @@
   form {
     background: white;
     width: 100%;
-    max-width: 480px;
-    padding: 1.5rem;
-    border-radius: 16px 16px 0 0;
+    max-width: 520px;
+    padding: 1.75rem;
+    border-radius: 20px 20px 0 0;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    max-height: 90vh;
+    gap: 1rem;
+    max-height: 92vh;
     overflow-y: auto;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
   }
   h2 {
     margin: 0 0 0.25rem;
+    font-size: 1.35rem;
+    color: #0f172a;
   }
   label {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.9rem;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #475569;
+  }
+  .row {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .row label {
+    flex: 1;
+  }
+  .time-field {
+    flex: 1.1;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .field-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #475569;
   }
   .checkbox-label {
     flex-direction: row;
     align-items: center;
     gap: 0.5rem;
+    font-weight: normal;
+    color: #334155;
+  }
+  .section-divider {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 0.1rem 0;
   }
   .color-picker {
     display: flex;
@@ -262,15 +366,28 @@
     font-size: 0.75rem;
     color: #64748b;
     margin: 0;
+    font-weight: normal;
   }
   input,
   textarea,
   select {
-    padding: 0.6rem;
+    padding: 0.65rem 0.75rem;
     font-size: 1rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
+    font-weight: normal;
+    color: #0f172a;
+    border: 1.5px solid #dde3ea;
+    border-radius: 10px;
     font-family: inherit;
+    transition: border-color 0.15s ease;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: #2563eb;
+  }
+  textarea {
+    resize: vertical;
   }
   .time-select {
     display: flex;
@@ -280,40 +397,109 @@
   .time-select select {
     flex: 1;
   }
+  .upload-dropzone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #64748b;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: #f8fafc;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .upload-dropzone:hover {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
+  .upload-dropzone.uploading {
+    cursor: wait;
+    opacity: 0.7;
+  }
+  .upload-icon {
+    font-size: 1.2rem;
+  }
+  .image-preview {
+    position: relative;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .image-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 220px;
+    border-radius: 12px;
+    border: 1.5px solid #dde3ea;
+  }
+  .remove-image {
+    position: absolute;
+    top: -0.5rem;
+    right: -0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: #1e293b;
+    color: white;
+    border: 2px solid white;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
   .form-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
   }
   .spacer {
     flex: 1;
   }
   button {
-    padding: 0.6rem 1.2rem;
-    font-size: 1rem;
+    padding: 0.65rem 1.3rem;
+    font-size: 0.95rem;
+    font-weight: 600;
     background: #2563eb;
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 10px;
     cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  button:hover {
+    background: #1d4ed8;
   }
   button.secondary {
     background: #e2e8f0;
     color: #1e293b;
   }
+  button.secondary:hover {
+    background: #cbd5e1;
+  }
   button.danger {
     background: none;
     color: #dc2626;
-    padding: 0.6rem 0.4rem;
+    padding: 0.65rem 0.4rem;
+  }
+  button.danger:hover {
+    background: #fef2f2;
   }
   button:disabled {
     opacity: 0.6;
+    cursor: not-allowed;
   }
   .error {
     color: #dc2626;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     margin: 0;
+    font-weight: normal;
   }
 </style>
