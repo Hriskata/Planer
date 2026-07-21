@@ -85,7 +85,7 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- Chip count varies (0-N) so there's no fixed per-slot button to carry this
-           click instead, same reasoning as WeekCalendar's all-day-cell. Keyboard users
+           click instead, same reasoning as WeekCalendar's day-column. Keyboard users
            still have the fully-accessible "+" FAB as a fallback. -->
       <div
         class="day-cell"

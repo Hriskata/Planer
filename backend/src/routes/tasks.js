@@ -6,13 +6,6 @@ const router = express.Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 const VALID_STATUS = ['pending', 'done'];
-// Legacy: the frontend no longer sends `color` (task color is now derived from
-// post_type, see frontend/src/lib/colors.js) — kept here only to validate old data
-// and any direct API callers.
-const VALID_COLORS = [
-  'maroon', 'crimson', 'red', 'orange', 'salmon', 'tan', 'yellow',
-  'lightgreen', 'green', 'teal', 'blue', 'indigo', 'mauve', 'black',
-];
 
 function validateTaskInput(body, { partial = false } = {}) {
   const errors = [];
@@ -83,16 +76,6 @@ function validateTaskInput(body, { partial = false } = {}) {
     data.shared = 0;
   }
 
-  if (body.color !== undefined) {
-    if (body.color !== null && !VALID_COLORS.includes(body.color)) {
-      errors.push(`color трябва да е едно от: ${VALID_COLORS.join(', ')}, или null.`);
-    } else {
-      data.color = body.color;
-    }
-  } else if (!partial) {
-    data.color = null;
-  }
-
   return { errors, data };
 }
 
@@ -139,8 +122,8 @@ router.post('/', (req, res) => {
 
   const result = db
     .prepare(
-      `INSERT INTO tasks (user_id, title, notes, date, time, status, shared, color, client, post_type, image_path)
-       VALUES (@userId, @title, @notes, @date, @time, @status, @shared, @color, @client, @post_type, @image_path)`
+      `INSERT INTO tasks (user_id, title, notes, date, time, status, shared, client, post_type, image_path)
+       VALUES (@userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @image_path)`
     )
     .run({ userId: req.user.id, ...data });
 
@@ -168,7 +151,7 @@ router.put('/:id', (req, res) => {
   // on a named parameter in the object that has no matching placeholder.
   db.prepare(
     `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
-       status = @status, shared = @shared, color = @color, client = @client,
+       status = @status, shared = @shared, client = @client,
        post_type = @post_type, image_path = @image_path, updated_at = datetime('now')
      WHERE id = @id`
   ).run({
@@ -178,7 +161,6 @@ router.put('/:id', (req, res) => {
     time: merged.time,
     status: merged.status,
     shared: merged.shared,
-    color: merged.color,
     client: merged.client,
     post_type: merged.post_type,
     image_path: merged.image_path,
