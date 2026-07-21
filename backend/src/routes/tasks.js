@@ -6,7 +6,12 @@ const router = express.Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 const VALID_STATUS = ['pending', 'done'];
-const VALID_COLORS = ['green', 'yellow', 'red'];
+// Kept in sync by hand with TASK_COLORS in frontend/src/lib/colors.js (values only —
+// the backend doesn't care about hex/labels, just which strings are acceptable).
+const VALID_COLORS = [
+  'maroon', 'crimson', 'red', 'orange', 'salmon', 'tan', 'yellow',
+  'lightgreen', 'green', 'teal', 'blue', 'indigo', 'mauve', 'black',
+];
 
 function validateTaskInput(body, { partial = false } = {}) {
   const errors = [];

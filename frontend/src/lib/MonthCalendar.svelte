@@ -119,13 +119,15 @@
     text-transform: uppercase;
     padding: 0.4rem 0;
   }
+  /* Deliberately a different gray than the cell borders below — otherwise the weekend
+     wash and the grid lines blend into each other. */
   .weekday-label.weekend {
-    background: #f1f5f9;
+    background: #e9edf2;
   }
   .day-cell {
     min-height: 90px;
-    border-left: 1px solid #f1f5f9;
-    border-top: 1px solid #f1f5f9;
+    border-left: 1px solid #cbd5e1;
+    border-top: 1px solid #cbd5e1;
     padding: 0.25rem;
     display: flex;
     flex-direction: column;
@@ -134,7 +136,7 @@
     cursor: pointer;
   }
   .day-cell.weekend {
-    background: #f1f5f9;
+    background: #e9edf2;
   }
   .day-cell.other-month {
     opacity: 0.45;

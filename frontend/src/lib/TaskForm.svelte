@@ -143,22 +143,25 @@
       <div class="color-picker">
         <button
           type="button"
-          class="color-swatch none"
+          class="color-bar none"
           class:selected={color === null}
           disabled={!!lockedColor}
           onclick={() => (color = null)}
-          aria-label="Без цвят"
-        ></button>
+        >
+          Без цвят
+        </button>
         {#each TASK_COLORS as c (c.value)}
           <button
             type="button"
-            class="color-swatch"
+            class="color-bar"
             class:selected={color === c.value}
             disabled={!!lockedColor}
-            style="background: {c.bg};"
+            style="background: {c.bg}; color: {c.fg};"
             onclick={() => (color = c.value)}
             aria-label={c.label}
-          ></button>
+          >
+            {#if color === c.value}✓{/if}
+          </button>
         {/each}
       </div>
     </label>
@@ -223,25 +226,37 @@
   }
   .color-picker {
     display: flex;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.3rem;
   }
-  .color-swatch {
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
+  .color-bar {
+    flex-shrink: 0;
+    height: 1.75rem;
+    border-radius: 4px;
     border: 2px solid transparent;
     cursor: pointer;
     padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 600;
   }
-  .color-swatch.none {
+  .color-bar.none {
     background: white;
     border-color: #cbd5e1;
-    background-image: linear-gradient(to top right, transparent 47%, #dc2626 49%, #dc2626 51%, transparent 53%);
+    color: #64748b;
+    font-weight: normal;
   }
-  .color-swatch.selected {
+  .color-bar.selected {
     border-color: #1e293b;
   }
-  .color-swatch:disabled {
+  .color-bar:disabled {
     cursor: not-allowed;
     opacity: 0.7;
   }

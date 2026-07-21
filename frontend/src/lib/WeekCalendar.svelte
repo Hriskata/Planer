@@ -304,12 +304,14 @@
   .day-header {
     text-align: center;
     padding: 0.4rem 0.1rem;
-    border-left: 1px solid #f1f5f9;
+    border-left: 1px solid #cbd5e1;
   }
+  /* Deliberately a different gray than the hour/column borders above and below —
+     otherwise the weekend wash and the grid lines blend into each other. */
   .day-header.weekend,
   .all-day-cell.weekend,
   .day-column.weekend {
-    background: #f1f5f9;
+    background: #e9edf2;
   }
   .day-name {
     font-size: 0.7rem;
@@ -325,7 +327,7 @@
     min-height: 2rem;
   }
   .all-day-cell {
-    border-left: 1px solid #f1f5f9;
+    border-left: 1px solid #cbd5e1;
     padding: 0.15rem;
     display: flex;
     flex-direction: column;
@@ -377,13 +379,13 @@
   }
   .day-column {
     position: relative;
-    border-left: 1px solid #f1f5f9;
+    border-left: 1px solid #cbd5e1;
   }
   .hour-cell {
     display: block;
     width: 100%;
     border: none;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #cbd5e1;
     background: none;
     margin: 0;
     padding: 0;
