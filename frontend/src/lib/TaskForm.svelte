@@ -226,18 +226,14 @@
   }
   .color-picker {
     display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    max-height: 220px;
-    overflow-y: auto;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 0.3rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
   }
   .color-bar {
     flex-shrink: 0;
-    height: 1.75rem;
-    border-radius: 4px;
+    width: 2.75rem;
+    height: 2rem;
+    border-radius: 6px;
     border: 2px solid transparent;
     cursor: pointer;
     padding: 0;
@@ -248,6 +244,8 @@
     font-weight: 600;
   }
   .color-bar.none {
+    width: auto;
+    padding: 0 0.6rem;
     background: white;
     border-color: #cbd5e1;
     color: #64748b;
