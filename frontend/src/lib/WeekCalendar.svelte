@@ -95,10 +95,10 @@
 
 <style>
   .calendar {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-border);
     border-radius: 10px;
     overflow: hidden;
-    background: white;
+    background: var(--color-surface);
   }
   .scroll-x {
     overflow-x: auto;
@@ -116,23 +116,23 @@
     grid-template-columns: repeat(7, minmax(110px, 1fr));
   }
   .header-row {
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-border);
   }
   .day-header {
     text-align: center;
     padding: 0.4rem 0.1rem;
-    border-left: 1px solid #cbd5e1;
+    border-left: 1px solid var(--color-border-strong);
     min-width: 0;
   }
   .day-header:first-child {
     border-left: none;
   }
   .day-header.weekend {
-    background: #e9edf2;
+    background: var(--color-weekend);
   }
   .day-name {
     font-size: 0.7rem;
-    color: #64748b;
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
   .day-date {
@@ -140,7 +140,7 @@
     font-weight: 600;
   }
   .day-column {
-    border-left: 1px solid #cbd5e1;
+    border-left: 1px solid var(--color-border-strong);
     min-width: 0;
     overflow-y: auto;
     padding: 0.4rem;
@@ -154,12 +154,12 @@
     border-left: none;
   }
   .day-column.weekend {
-    background: #e9edf2;
+    background: var(--color-weekend);
   }
   .empty-hint {
     margin: 0;
     font-size: 0.7rem;
-    color: #94a3b8;
+    color: var(--color-text-faint);
     text-align: center;
     padding: 0.5rem 0;
   }

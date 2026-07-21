@@ -18,6 +18,7 @@
   import BacklogColumn from './BacklogColumn.svelte';
   import { extractClients } from './search.js';
   import { POST_TYPES } from './postTypes.js';
+  import { theme, toggleTheme } from './theme.js';
   import {
     getDragState,
     handlePointerMove,
@@ -175,6 +176,14 @@
   <h1>Планер</h1>
   <div class="header-actions">
     <span class="user">{$auth.user.username}</span>
+    <button
+      class="theme-toggle"
+      onclick={toggleTheme}
+      aria-label={$theme === 'dark' ? 'Светла тема' : 'Тъмна тема'}
+      title={$theme === 'dark' ? 'Светла тема' : 'Тъмна тема'}
+    >
+      {$theme === 'dark' ? '☀️' : '🌙'}
+    </button>
     <button class="link" onclick={logout}>Изход</button>
   </div>
 </header>
@@ -353,6 +362,20 @@
     cursor: pointer;
     font-size: 0.9rem;
   }
+  .theme-toggle {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 999px;
+    width: 1.9rem;
+    height: 1.9rem;
+    line-height: 1;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
   .controls {
     display: flex;
     justify-content: space-between;
@@ -368,16 +391,17 @@
   }
   .controls button {
     padding: 0.4rem 0.8rem;
-    border: 1px solid #cbd5e1;
-    background: white;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.9rem;
   }
   .controls button.active {
-    background: #2563eb;
+    background: var(--color-accent);
     color: white;
-    border-color: #2563eb;
+    border-color: var(--color-accent);
   }
   .search-bar {
     display: flex;
@@ -399,8 +423,10 @@
     padding: 0.5rem 2rem 0.5rem 0.75rem;
     /* Must stay >=16px — iOS Safari auto-zooms the page on focus for any input below that. */
     font-size: 1rem;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
   }
   .search-input .clear {
     position: absolute;
@@ -411,7 +437,7 @@
     background: none;
     font-size: 1.1rem;
     line-height: 1;
-    color: #94a3b8;
+    color: var(--color-text-faint);
     cursor: pointer;
     padding: 0.2rem;
   }
@@ -420,7 +446,7 @@
     align-items: center;
     gap: 0.35rem;
     font-size: 0.85rem;
-    color: #475569;
+    color: var(--color-text-muted);
     white-space: nowrap;
     cursor: pointer;
   }
@@ -435,9 +461,9 @@
   }
   .filter-select {
     font-size: 0.8rem;
-    color: #334155;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
+    color: var(--color-text);
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
     border-radius: 999px;
     padding: 0.3rem 0.6rem;
     cursor: pointer;
@@ -445,7 +471,7 @@
   .tag-chip.clear-all {
     background: none;
     border: none;
-    color: #94a3b8;
+    color: var(--color-text-faint);
     text-decoration: underline;
     padding: 0.2rem 0.3rem;
     cursor: pointer;
@@ -459,7 +485,7 @@
   }
   h2 {
     font-size: 1rem;
-    color: #334155;
+    color: var(--color-text-muted);
     margin: 1.25rem 0 0.5rem;
   }
   /* The backlog column is a fixed-width sibling, which is what shrinks the calendar
@@ -490,7 +516,7 @@
     position: fixed;
     transform: translate(-50%, -130%);
     pointer-events: none;
-    background: #1d4ed8;
+    background: var(--color-accent-hover);
     color: white;
     padding: 0.3rem 0.5rem;
     border-radius: 6px;
@@ -503,18 +529,18 @@
     text-overflow: ellipsis;
   }
   .empty {
-    color: #94a3b8;
+    color: var(--color-text-faint);
     font-size: 0.9rem;
   }
   .banner {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--color-banner-bg);
+    color: var(--color-banner-text);
     padding: 0.5rem 0.75rem;
     border-radius: 8px;
     font-size: 0.85rem;
   }
   .error {
-    color: #dc2626;
+    color: var(--color-danger);
     font-size: 0.9rem;
   }
   .fab {

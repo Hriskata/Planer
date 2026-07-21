@@ -216,14 +216,14 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.4);
+    background: var(--color-overlay);
     display: flex;
     align-items: flex-end;
     justify-content: center;
     z-index: 10;
   }
   form {
-    background: white;
+    background: var(--color-surface);
     width: 100%;
     max-width: 520px;
     padding: 1.75rem;
@@ -238,7 +238,7 @@
   h2 {
     margin: 0 0 0.25rem;
     font-size: 1.35rem;
-    color: #0f172a;
+    color: var(--color-text);
   }
   label {
     display: flex;
@@ -246,7 +246,7 @@
     gap: 0.35rem;
     font-size: 0.85rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-text-muted);
   }
   .row {
     display: flex;
@@ -266,18 +266,18 @@
   .field-label {
     font-size: 0.85rem;
     font-weight: 600;
-    color: #475569;
+    color: var(--color-text-muted);
   }
   .checkbox-label {
     flex-direction: row;
     align-items: center;
     gap: 0.5rem;
     font-weight: normal;
-    color: #334155;
+    color: var(--color-text);
   }
   .section-divider {
     height: 1px;
-    background: #e2e8f0;
+    background: var(--color-border);
     margin: 0.1rem 0;
   }
   input,
@@ -286,8 +286,9 @@
     padding: 0.65rem 0.75rem;
     font-size: 1rem;
     font-weight: normal;
-    color: #0f172a;
-    border: 1.5px solid #dde3ea;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
     border-radius: 10px;
     font-family: inherit;
     transition: border-color 0.15s ease;
@@ -296,7 +297,7 @@
   textarea:focus,
   select:focus {
     outline: none;
-    border-color: #2563eb;
+    border-color: var(--color-accent);
   }
   textarea {
     resize: vertical;
@@ -315,18 +316,18 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 1.25rem;
-    border: 2px dashed #cbd5e1;
+    border: 2px dashed var(--color-border-strong);
     border-radius: 12px;
-    color: #64748b;
+    color: var(--color-text-muted);
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
-    background: #f8fafc;
+    background: var(--color-surface-alt);
     transition: border-color 0.15s ease, background 0.15s ease;
   }
   .upload-dropzone:hover {
-    border-color: #2563eb;
-    background: #eff6ff;
+    border-color: var(--color-accent);
+    background: var(--color-accent-tint);
   }
   .upload-dropzone.uploading {
     cursor: wait;
@@ -345,7 +346,7 @@
     max-width: 100%;
     max-height: 220px;
     border-radius: 12px;
-    border: 1.5px solid #dde3ea;
+    border: 1.5px solid var(--color-border);
   }
   .remove-image {
     position: absolute;
@@ -354,9 +355,9 @@
     width: 1.75rem;
     height: 1.75rem;
     border-radius: 50%;
-    background: #1e293b;
-    color: white;
-    border: 2px solid white;
+    background: var(--color-text);
+    color: var(--color-surface);
+    border: 2px solid var(--color-surface);
     font-size: 1rem;
     line-height: 1;
     cursor: pointer;
@@ -379,7 +380,7 @@
     padding: 0.65rem 1.3rem;
     font-size: 0.95rem;
     font-weight: 600;
-    background: #2563eb;
+    background: var(--color-accent);
     color: white;
     border: none;
     border-radius: 10px;
@@ -387,29 +388,29 @@
     transition: background 0.15s ease;
   }
   button:hover {
-    background: #1d4ed8;
+    background: var(--color-accent-hover);
   }
   button.secondary {
-    background: #e2e8f0;
-    color: #1e293b;
+    background: var(--color-border);
+    color: var(--color-text);
   }
   button.secondary:hover {
-    background: #cbd5e1;
+    background: var(--color-border-strong);
   }
   button.danger {
     background: none;
-    color: #dc2626;
+    color: var(--color-danger);
     padding: 0.65rem 0.4rem;
   }
   button.danger:hover {
-    background: #fef2f2;
+    background: var(--color-danger-tint);
   }
   button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
   .error {
-    color: #dc2626;
+    color: var(--color-danger);
     font-size: 0.85rem;
     margin: 0;
     font-weight: normal;

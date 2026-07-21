@@ -55,7 +55,7 @@
     gap: 0.75rem;
     width: 100%;
     max-width: 320px;
-    background: white;
+    background: var(--color-surface);
     padding: 1.5rem;
     border-radius: 12px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
@@ -63,24 +63,27 @@
   h1 {
     margin: 0 0 0.5rem;
     text-align: center;
-    color: #2563eb;
+    color: var(--color-accent);
   }
   label {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     font-size: 0.9rem;
+    color: var(--color-text);
   }
   input {
     padding: 0.6rem;
     font-size: 1rem;
-    border: 1px solid #cbd5e1;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
   }
   button {
     padding: 0.7rem;
     font-size: 1rem;
-    background: #2563eb;
+    background: var(--color-accent);
     color: white;
     border: none;
     border-radius: 6px;
@@ -90,7 +93,7 @@
     opacity: 0.6;
   }
   .error {
-    color: #dc2626;
+    color: var(--color-danger);
     font-size: 0.9rem;
     margin: 0;
   }

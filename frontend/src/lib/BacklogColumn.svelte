@@ -31,17 +31,17 @@
     flex-direction: column;
     width: 220px;
     flex-shrink: 0;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-border);
     border-radius: 10px;
-    background: white;
+    background: var(--color-surface);
     box-sizing: border-box;
   }
   h3 {
     margin: 0;
     padding: 0.6rem 0.75rem;
     font-size: 0.85rem;
-    color: #334155;
-    border-bottom: 1px solid #e2e8f0;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
   }
   .backlog-list {
     flex: 1;
@@ -55,7 +55,7 @@
   .empty-hint {
     margin: 0;
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-text-faint);
     text-align: center;
     padding: 1rem 0.5rem;
   }

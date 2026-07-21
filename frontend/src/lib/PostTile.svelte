@@ -84,7 +84,7 @@
     user-select: none;
   }
   .post.done {
-    background: #94a3b8;
+    background: var(--color-text-faint);
     color: white;
     text-decoration: line-through;
   }
@@ -96,7 +96,7 @@
     opacity: 0.3;
   }
   .post:focus-visible {
-    outline: 2px solid #1e293b;
+    outline: 2px solid var(--color-text);
     outline-offset: 1px;
   }
   .post-header {

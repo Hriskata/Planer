@@ -128,10 +128,10 @@
 
 <style>
   .month-calendar {
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-border);
     border-radius: 10px;
     overflow: hidden;
-    background: white;
+    background: var(--color-surface);
   }
   .weekday-header,
   .month-grid {
@@ -143,24 +143,24 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
   .weekday-header {
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--color-border);
   }
   .weekday-label {
     text-align: center;
     font-size: 0.7rem;
-    color: #64748b;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     padding: 0.4rem 0;
   }
   /* Deliberately a different gray than the cell borders below — otherwise the weekend
      wash and the grid lines blend into each other. */
   .weekday-label.weekend {
-    background: #e9edf2;
+    background: var(--color-weekend);
   }
   .day-cell {
     min-height: 90px;
-    border-left: 1px solid #cbd5e1;
-    border-top: 1px solid #cbd5e1;
+    border-left: 1px solid var(--color-border-strong);
+    border-top: 1px solid var(--color-border-strong);
     padding: 0.25rem;
     display: flex;
     flex-direction: column;
@@ -169,7 +169,7 @@
     cursor: pointer;
   }
   .day-cell.weekend {
-    background: #e9edf2;
+    background: var(--color-weekend);
   }
   .day-cell.other-month {
     opacity: 0.45;
@@ -183,10 +183,10 @@
     padding: 0.15rem 0.4rem;
     border-radius: 999px;
     cursor: pointer;
-    color: #1e293b;
+    color: var(--color-text);
   }
   .day-cell.today .day-number {
-    background: #2563eb;
+    background: var(--color-accent);
     color: white;
   }
   .chips {
@@ -218,7 +218,7 @@
     opacity: 0.3;
   }
   .chip.done {
-    background: #94a3b8;
+    background: var(--color-text-faint);
     color: white;
     text-decoration: line-through;
   }
@@ -240,7 +240,7 @@
     font-size: 0.65rem;
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--color-text-muted);
     text-align: left;
     cursor: pointer;
     padding: 0.1rem 0.3rem;
