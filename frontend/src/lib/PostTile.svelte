@@ -141,7 +141,7 @@
     aspect-ratio: 1 / 1;
     object-fit: contain;
     background: inherit;
-    border-radius: 4px;
+    border-radius: 6px; /* matches .post's own radius, so the photo isn't sharp-cornered inside a rounded tile */
   }
   .post.done .post-image {
     filter: grayscale(100%);
