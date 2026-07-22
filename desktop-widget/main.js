@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, ipcMain } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -38,6 +38,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -105,6 +106,22 @@ function createTray() {
   rebuildMenu();
   tray.on('click', () => (win.isVisible() ? win.hide() : win.show()));
 }
+
+// The widget's own × button (both on the login screen and once logged in) — unlike
+// clicking the (invisible, since frame:false) native close control, this is meant to
+// actually exit the app, not just hide it. Only the tray's "Изход" used to do that;
+// now this does too, via the preload bridge (renderer can't reach `app` directly with
+// contextIsolation on).
+ipcMain.on('quit-app', () => {
+  app.isQuitting = true;
+  app.quit();
+});
+
+// The widget's own minimize (—) button — same reasoning: frame:false means no native
+// one to click instead.
+ipcMain.on('minimize-app', () => {
+  win.minimize();
+});
 
 app.whenReady().then(() => {
   // First run only — respects a later manual toggle in the tray menu instead of
