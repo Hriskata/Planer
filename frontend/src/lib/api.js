@@ -91,6 +91,19 @@ export async function uploadImage(file) {
   return res.json();
 }
 
+export async function getVapidPublicKey() {
+  const { publicKey } = await request('/push/vapid-public-key');
+  return publicKey;
+}
+
+export function subscribePush(subscription) {
+  return request('/push/subscribe', { method: 'POST', body: JSON.stringify(subscription) });
+}
+
+export function unsubscribePush(endpoint) {
+  return request('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) });
+}
+
 export function createTask(data) {
   return request('/tasks', { method: 'POST', body: JSON.stringify(data) });
 }

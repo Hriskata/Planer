@@ -25,6 +25,7 @@ for (const [column, type] of [
   ['client', 'TEXT'],
   ['post_type', 'TEXT'],
   ['image_path', 'TEXT'],
+  ['reminder_sent', 'INTEGER NOT NULL DEFAULT 0'],
 ]) {
   if (!taskColumns.includes(column)) {
     db.exec(`ALTER TABLE tasks ADD COLUMN ${column} ${type}`);
@@ -54,16 +55,17 @@ if (dateColumn?.notnull) {
         client TEXT,
         post_type TEXT,
         image_path TEXT,
+        reminder_sent INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       INSERT INTO tasks_new (
         id, user_id, title, notes, date, time, status, shared,
-        color, client, post_type, image_path, created_at, updated_at
+        color, client, post_type, image_path, reminder_sent, created_at, updated_at
       )
       SELECT
         id, user_id, title, notes, date, time, status, shared,
-        color, client, post_type, image_path, created_at, updated_at
+        color, client, post_type, image_path, reminder_sent, created_at, updated_at
       FROM tasks;
       DROP TABLE tasks;
       ALTER TABLE tasks_new RENAME TO tasks;

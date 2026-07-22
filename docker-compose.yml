@@ -4,6 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # Container base image defaults to UTC — task date/time are stored as plain
+      # "local wall-clock" strings with no timezone info (whatever the user's browser
+      # showed them), so the server's own clock must agree or reminders (and anything
+      # else comparing against "now") fire hours off. Override TZ in .env if deploying
+      # outside Bulgaria.
+      - TZ=${TZ:-Europe/Sofia}
     env_file:
       - .env
     volumes:

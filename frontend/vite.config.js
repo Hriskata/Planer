@@ -6,6 +6,16 @@ export default defineConfig({
   plugins: [
     svelte(),
     VitePWA({
+      // injectManifest (not the default generateSW) because task reminders need a
+      // custom `push` / `notificationclick` handler in the service worker — generateSW
+      // only knows how to build caching routes, it has no hook for arbitrary event
+      // listeners. src/sw.js is ours; this just injects the precache manifest into it.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,png,svg}'],
+      },
       registerType: 'autoUpdate',
       includeAssets: ['icons/apple-touch-icon.png'],
       // By default vite-plugin-pwa does NOT serve the manifest/service worker in `vite dev`
@@ -25,12 +35,6 @@ export default defineConfig({
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
-      },
-      workbox: {
-        // Caches static assets (JS/CSS/icons) at build time. API requests (/api/*)
-        // are deliberately NOT cached here — offline access to tasks is implemented
-        // separately, via localStorage in src/lib/api.js (see the comment there).
-        globPatterns: ['**/*.{js,css,html,png,svg}'],
       },
     }),
   ],

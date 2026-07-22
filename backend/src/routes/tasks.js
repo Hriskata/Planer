@@ -188,12 +188,19 @@ router.put('/:id', (req, res) => {
   }
 
   const merged = { ...task, ...data };
+  // Rescheduling (a new date and/or time) means any already-sent 10-min-before
+  // reminder was for the old moment — reset it so the new one still gets a reminder.
+  const rescheduled =
+    ('date' in data && data.date !== task.date) || ('time' in data && data.time !== task.time);
+  const reminderSent = rescheduled ? 0 : task.reminder_sent;
+
   // We pass only exactly the keys that appear in the SQL text — node:sqlite throws
   // on a named parameter in the object that has no matching placeholder.
   db.prepare(
     `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
        status = @status, shared = @shared, client = @client,
-       post_type = @post_type, image_path = @image_path, updated_at = datetime('now')
+       post_type = @post_type, image_path = @image_path, reminder_sent = @reminderSent,
+       updated_at = datetime('now')
      WHERE id = @id`
   ).run({
     title: merged.title,
@@ -205,6 +212,7 @@ router.put('/:id', (req, res) => {
     client: merged.client,
     post_type: merged.post_type,
     image_path: merged.image_path,
+    reminderSent,
     id: task.id,
   });
 

@@ -19,12 +19,14 @@
   import { extractClients } from './search.js';
   import { POST_TYPES } from './postTypes.js';
   import { theme, toggleTheme } from './theme.js';
+  import { notificationsEnabled, syncNotificationState, toggleNotifications } from './notifications.js';
   import {
     getDragState,
     handlePointerMove,
     handlePointerUp,
     handlePointerCancel,
   } from './dragDrop.svelte.js';
+  import { onMount } from 'svelte';
 
   let viewMode = $state('day'); // 'day' | 'week' | 'month'
   let currentDate = $state(todayStr());
@@ -92,6 +94,19 @@
     viewMode;
     loadTasks();
   });
+
+  onMount(() => {
+    syncNotificationState();
+  });
+
+  async function handleToggleNotifications() {
+    error = '';
+    try {
+      await toggleNotifications();
+    } catch (err) {
+      error = err.message;
+    }
+  }
 
   function goToday() {
     currentDate = todayStr();
@@ -176,6 +191,14 @@
   <h1>Планер</h1>
   <div class="header-actions">
     <span class="user">{$auth.user.username}</span>
+    <button
+      class="theme-toggle"
+      onclick={handleToggleNotifications}
+      aria-label={$notificationsEnabled ? 'Изключи известията' : 'Включи известията'}
+      title={$notificationsEnabled ? 'Изключи известията' : 'Включи известията (10 мин преди час на задача)'}
+    >
+      {$notificationsEnabled ? '🔔' : '🔕'}
+    </button>
     <button
       class="theme-toggle"
       onclick={toggleTheme}

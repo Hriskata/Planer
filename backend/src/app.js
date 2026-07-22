@@ -8,6 +8,7 @@ const { requireAuth } = require('./middleware/auth');
 const authRouter = require('./routes/auth');
 const tasksRouter = require('./routes/tasks');
 const uploadsRouter = require('./routes/uploads');
+const pushRouter = require('./routes/push');
 
 const app = express();
 
@@ -24,6 +25,7 @@ if (process.env.CORS_ORIGIN) {
 app.use('/api/auth', authRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/uploads', requireAuth, uploadsRouter);
+app.use('/api/push', requireAuth, pushRouter);
 
 // Uploaded task images. Deliberately public (not behind requireAuth) — a plain <img
 // src> can't attach the JWT header, and filenames are random UUIDs, not guessable.
