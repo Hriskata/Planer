@@ -218,8 +218,10 @@
     inset: 0;
     background: var(--color-overlay);
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
+    padding: 1rem 0;
+    box-sizing: border-box;
     z-index: 10;
   }
   form {
@@ -227,7 +229,7 @@
     width: 100%;
     max-width: 520px;
     padding: 1.75rem;
-    border-radius: 20px 20px 0 0;
+    border-radius: 20px;
     display: flex;
     flex-direction: column;
     gap: 1rem;
