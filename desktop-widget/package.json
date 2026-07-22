@@ -1,0 +1,30 @@
+{
+  "name": "planer-widget",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Малко desktop 'winджет' с днешните задачи от Планер — Electron обвивка около frontend/widget.html.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.planer.widget",
+    "productName": "Планер Widget",
+    "files": ["main.js", "assets/**/*"],
+    "directories": { "output": "dist" },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

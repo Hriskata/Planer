@@ -1,8 +1,23 @@
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      // widget.html is the compact "today's tasks" view the Electron desktop widget
+      // loads (see ../desktop-widget/) — a second, much smaller entry point alongside
+      // the main app, reusing the same api.js/stores.js/colors.js modules.
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        widget: resolve(__dirname, 'widget.html'),
+      },
+    },
+  },
   plugins: [
     svelte(),
     VitePWA({

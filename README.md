@@ -103,6 +103,11 @@ npm run build
 
 Създава `frontend/dist/`, който backend-ът (`backend/src/app.js`) автоматично засича и сервира от същия origin — вижда се веднага след build, без допълнителна настройка.
 
+## Desktop Widget
+
+`desktop-widget/` — малко Electron приложение, always-on-top панел с днешните задачи,
+за да не се отваря цялото приложение всеки път. Виж `desktop-widget/README.md`.
+
 ## Deployment (Docker Compose + Cloudflare Tunnel)
 
 Един `Dockerfile` в корена (multi-stage: build-ва frontend-а, после го копира в backend runtime-а) — в production backend-ът сервира и API-то, и статичния frontend от един процес/контейнер, без нужда от CORS.
