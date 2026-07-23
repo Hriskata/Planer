@@ -67,6 +67,15 @@ function createWindow() {
   });
 }
 
+// The BrowserWindow is destroyed the moment app.quit() runs (the widget's own ×
+// button, or the tray's "Изход"), but the OS can still deliver one more queued click
+// on the tray icon right as the app is tearing down — every tray/menu handler below
+// touches `win`, so they all go through this guard instead of throwing "Object has
+// been destroyed" (a truthy-but-dead reference; optional chaining alone doesn't catch it).
+function withWindow(fn) {
+  if (win && !win.isDestroyed()) fn(win);
+}
+
 function createTray() {
   tray = new Tray(path.join(__dirname, 'assets/icon.png'));
   tray.setToolTip('Планер Widget');
@@ -75,9 +84,9 @@ function createTray() {
     const loginSettings = app.getLoginItemSettings();
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: 'Покажи', click: () => win.show() },
-        { label: 'Скрий', click: () => win.hide() },
-        { label: 'Презареди', click: () => win.reload() },
+        { label: 'Покажи', click: () => withWindow((w) => w.show()) },
+        { label: 'Скрий', click: () => withWindow((w) => w.hide()) },
+        { label: 'Презареди', click: () => withWindow((w) => w.reload()) },
         { type: 'separator' },
         {
           label: 'Стартирай с Windows',
@@ -104,7 +113,7 @@ function createTray() {
   };
 
   rebuildMenu();
-  tray.on('click', () => (win.isVisible() ? win.hide() : win.show()));
+  tray.on('click', () => withWindow((w) => (w.isVisible() ? w.hide() : w.show())));
 }
 
 // The widget's own × button (both on the login screen and once logged in) — unlike
@@ -120,7 +129,7 @@ ipcMain.on('quit-app', () => {
 // The widget's own minimize (—) button — same reasoning: frame:false means no native
 // one to click instead.
 ipcMain.on('minimize-app', () => {
-  win.minimize();
+  withWindow((w) => w.minimize());
 });
 
 app.whenReady().then(() => {

@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  reminder_minutes INTEGER NOT NULL DEFAULT 10, -- how long before a task's time to push a reminder
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

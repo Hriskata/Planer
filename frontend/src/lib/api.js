@@ -104,6 +104,14 @@ export function unsubscribePush(endpoint) {
   return request('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) });
 }
 
+export async function getNotificationSettings() {
+  return request('/push/settings');
+}
+
+export function updateNotificationSettings(reminderMinutes) {
+  return request('/push/settings', { method: 'PUT', body: JSON.stringify({ reminderMinutes }) });
+}
+
 export function createTask(data) {
   return request('/tasks', { method: 'POST', body: JSON.stringify(data) });
 }

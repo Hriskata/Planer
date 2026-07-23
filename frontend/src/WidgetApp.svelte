@@ -266,10 +266,16 @@
      -webkit-app-region does NOT cascade to descendants on its own (confirmed via
      getComputedStyle — a child with no value of its own computes to "none", not its
      parent's "drag"), so every element needs an explicit value: default the whole
-     tree to drag, then opt the actual interactive controls back out below. */
+     tree to drag, then opt the actual interactive controls back out below.
+     user-select: none is just as necessary — text is selectable by default, and a
+     mousedown-drag that starts over actual text (e.g. the date label) gets captured
+     as a text-selection gesture instead of ever reaching the drag-region behavior, so
+     without this the window silently fails to move from most of its own draggable area. */
   .widget,
   .widget * {
     -webkit-app-region: drag;
+    -webkit-user-select: none;
+    user-select: none;
   }
   header {
     display: flex;

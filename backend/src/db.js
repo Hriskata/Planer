@@ -32,6 +32,11 @@ for (const [column, type] of [
   }
 }
 
+const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+if (!userColumns.includes('reminder_minutes')) {
+  db.exec('ALTER TABLE users ADD COLUMN reminder_minutes INTEGER NOT NULL DEFAULT 10');
+}
+
 // SQLite can't directly relax a NOT NULL constraint on an existing column — the only
 // way is to rebuild the table. Needed so existing databases (from before "unscheduled"
 // backlog tasks existed) allow date to be NULL too, not just brand-new ones. Uses an

@@ -1,7 +1,6 @@
 const webpush = require('web-push');
 const db = require('./db');
 
-const REMINDER_MINUTES = 10;
 const CHECK_INTERVAL_MS = 30 * 1000;
 
 let configured = false;
@@ -54,22 +53,25 @@ async function sendReminder(task) {
   }
 }
 
-// Runs every 30s. A task is due once "now" has crossed (task time - 10 min) but the
-// task's own time hasn't passed yet — reminder_sent guards it from firing twice, so a
-// slightly delayed tick (or a server restart) still fires it exactly once, just late,
-// rather than requiring a precise instant to not miss it.
+// Runs every 30s. A task is due once "now" has crossed (task time - the OWNER's own
+// reminder_minutes preference) but the task's own time hasn't passed yet —
+// reminder_sent guards it from firing twice, so a slightly delayed tick (or a server
+// restart) still fires it exactly once, just late, rather than requiring a precise
+// instant to not miss it. reminder_minutes varies per user, so it's read from the
+// joined users row per task rather than a single bound parameter shared by every row.
 async function checkReminders() {
   if (!ensureConfigured()) return;
   const now = nowString();
   const dueTasks = db
     .prepare(
-      `SELECT * FROM tasks
-       WHERE reminder_sent = 0
-         AND date IS NOT NULL AND time IS NOT NULL
-         AND datetime(date || ' ' || time) <= datetime(@now, '+' || @minutes || ' minutes')
-         AND datetime(date || ' ' || time) >= datetime(@now)`
+      `SELECT t.* FROM tasks t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.reminder_sent = 0
+         AND t.date IS NOT NULL AND t.time IS NOT NULL
+         AND datetime(t.date || ' ' || t.time) <= datetime(@now, '+' || u.reminder_minutes || ' minutes')
+         AND datetime(t.date || ' ' || t.time) >= datetime(@now)`
     )
-    .all({ now, minutes: REMINDER_MINUTES });
+    .all({ now });
 
   for (const task of dueTasks) {
     await sendReminder(task);
@@ -77,4 +79,4 @@ async function checkReminders() {
   }
 }
 
-module.exports = { checkReminders, REMINDER_MINUTES, CHECK_INTERVAL_MS };
+module.exports = { checkReminders, CHECK_INTERVAL_MS };
