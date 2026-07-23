@@ -35,12 +35,19 @@
     }
   }
 
-  async function handleToggle() {
+  async function handleToggle(e) {
     error = '';
     try {
       await toggleNotifications();
     } catch (err) {
       error = err.message;
+      // The checkbox is a real DOM element — clicking it flips its native checked
+      // state immediately, before this handler even runs. `checked={$notificationsEnabled}`
+      // is a one-way binding, so Svelte only writes it back to the DOM when the store
+      // value itself changes; on failure the store stays exactly what it was, so
+      // Svelte sees "no change" and never corrects the checkbox's now-wrong visual
+      // state on its own — it has to be snapped back explicitly here.
+      e.target.checked = $notificationsEnabled;
     }
   }
 
