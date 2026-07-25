@@ -132,6 +132,22 @@ ipcMain.on('minimize-app', () => {
   withWindow((w) => w.minimize());
 });
 
+// Manual window-drag: `-webkit-app-region: drag` is CSS-correct (verified via
+// getComputedStyle down to the exact pixel) and moves a bare frameless BrowserWindow
+// just fine, but once the Svelte app actually mounts onto that same header, native
+// dragging silently stops working in the packaged widget — reproduced with real
+// OS-level SendInput-style mouse events, not just synthetic test events, so it isn't
+// a testing artifact. Rather than chase whatever in Chromium's hit-test/compositor
+// pipeline Svelte's mount is upsetting, the renderer now tracks the drag itself
+// (pointerdown/move on the header, see WidgetApp.svelte) and asks main to reposition
+// the window directly — same effect, no dependency on app-region ever working.
+ipcMain.on('move-window-by', (event, dx, dy) => {
+  withWindow((w) => {
+    const [x, y] = w.getPosition();
+    w.setPosition(Math.round(x + dx), Math.round(y + dy));
+  });
+});
+
 app.whenReady().then(() => {
   // First run only — respects a later manual toggle in the tray menu instead of
   // re-forcing this true on every launch.

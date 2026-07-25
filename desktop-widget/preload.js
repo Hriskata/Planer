@@ -6,4 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   quitApp: () => ipcRenderer.send('quit-app'),
   minimizeApp: () => ipcRenderer.send('minimize-app'),
+  // Moves the window by a screen-pixel delta — the JS-driven replacement for
+  // `-webkit-app-region: drag`, which turned out not to survive Svelte mounting onto
+  // the header in the packaged widget (see main.js for the full story).
+  moveWindowBy: (dx, dy) => ipcRenderer.send('move-window-by', dx, dy),
 });

@@ -118,6 +118,30 @@
     return tasks.filter((t) => t.date === date);
   }
 
+  // Manual window-drag for the header — `-webkit-app-region: drag` (see the CSS below)
+  // is CSS-correct but stops moving the window once Svelte mounts onto it in the
+  // packaged widget, confirmed with real OS-level mouse events, not just a test
+  // artifact. This tracks the drag itself and asks the Electron main process to
+  // reposition the window, sidestepping whatever breaks the native mechanism.
+  let dragOrigin = null;
+  function onHeaderPointerDown(e) {
+    if (e.button !== 0 || e.target.closest('.icon-btn')) return;
+    dragOrigin = { x: e.screenX, y: e.screenY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onHeaderPointerMove(e) {
+    if (!dragOrigin) return;
+    const dx = e.screenX - dragOrigin.x;
+    const dy = e.screenY - dragOrigin.y;
+    if (dx !== 0 || dy !== 0) {
+      window.electronAPI?.moveWindowBy(dx, dy);
+      dragOrigin = { x: e.screenX, y: e.screenY };
+    }
+  }
+  function onHeaderPointerUp() {
+    dragOrigin = null;
+  }
+
   // Re-polls every minute so the widget reflects changes made elsewhere (phone, main
   // app) without needing a manual refresh.
   onMount(() => {
@@ -141,7 +165,13 @@
 {/snippet}
 
 <div class="widget">
-  <header>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <header
+    onpointerdown={onHeaderPointerDown}
+    onpointermove={onHeaderPointerMove}
+    onpointerup={onHeaderPointerUp}
+    onpointercancel={onHeaderPointerUp}
+  >
     <span class="date">
       {#if viewMode === 'day'}{weekdayName(currentDate)}, {displayDate(currentDate)}
       {:else if viewMode === 'week'}{displayDate(weekDates[0])} – {displayDate(weekDates[6])}
