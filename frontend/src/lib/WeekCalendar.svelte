@@ -134,6 +134,7 @@
     font-size: 0.7rem;
     color: var(--color-text-muted);
     text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .day-date {
     font-size: 0.85rem;

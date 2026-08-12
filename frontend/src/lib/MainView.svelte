@@ -20,6 +20,7 @@
   import { POST_TYPES } from './postTypes.js';
   import { theme, toggleTheme } from './theme.js';
   import SettingsMenu from './SettingsMenu.svelte';
+  import Icon from './Icon.svelte';
   import {
     getDragState,
     handlePointerMove,
@@ -184,7 +185,7 @@
       aria-label={$theme === 'dark' ? 'Светла тема' : 'Тъмна тема'}
       title={$theme === 'dark' ? 'Светла тема' : 'Тъмна тема'}
     >
-      {$theme === 'dark' ? '☀️' : '🌙'}
+      <Icon name={$theme === 'dark' ? 'sun' : 'moon'} size="1.05rem" />
     </button>
     <button class="link" onclick={logout}>Изход</button>
   </div>
@@ -343,12 +344,14 @@
     /* Pushes content below the Dynamic Island/notch when installed as a standalone
        iOS app (env() resolves to 0 on browsers without a safe area — harmless there). */
     padding-top: calc(1rem + env(safe-area-inset-top, 0px));
-    background: #2563eb;
+    background: var(--color-accent);
     color: white;
   }
   header h1 {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
   .header-actions {
     display: flex;
@@ -365,6 +368,10 @@
     font-size: 0.9rem;
   }
   .theme-toggle {
+    /* Buttons don't inherit `color` from an ancestor by default (the browser's own
+       UA stylesheet gives them their own default instead) — without this the icon
+       rendered black even inside the white-on-blue header. */
+    color: inherit;
     background: none;
     border: 1px solid rgba(255, 255, 255, 0.5);
     border-radius: 999px;
@@ -486,9 +493,11 @@
     margin: 0 auto;
   }
   h2 {
-    font-size: 1rem;
-    color: var(--color-text-muted);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--color-text);
     margin: 1.25rem 0 0.5rem;
+    letter-spacing: -0.005em;
   }
   /* The backlog column is a fixed-width sibling, which is what shrinks the calendar
      itself (flex: 1 fills whatever's left). Stacks vertically below the calendar on
@@ -552,12 +561,19 @@
     width: 3.25rem;
     height: 3.25rem;
     border-radius: 50%;
-    background: #2563eb;
+    background: var(--color-accent);
     color: white;
     border: none;
     font-size: 1.75rem;
     line-height: 1;
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    transition: background-color 0.15s, transform 0.1s;
+  }
+  .fab:hover {
+    background: var(--color-accent-hover);
+  }
+  .fab:active {
+    transform: scale(0.94);
   }
 </style>

@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { createTask, updateTask, deleteTask, uploadImage } from './api.js';
   import { POST_TYPES } from './postTypes.js';
+  import Icon from './Icon.svelte';
 
   let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
 
@@ -178,7 +179,7 @@
       {:else}
         <label class="upload-dropzone" class:uploading={imageUploading}>
           <input type="file" accept="image/*" onchange={handleImageSelect} disabled={imageUploading} hidden />
-          <span class="upload-icon">📷</span>
+          <span class="upload-icon"><Icon name="camera" size="1.2rem" /></span>
           {imageUploading ? 'Качване...' : 'Качи снимка'}
         </label>
       {/if}

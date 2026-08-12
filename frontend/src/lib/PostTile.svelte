@@ -65,8 +65,8 @@
 
 <style>
   .post {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--color-post-default-bg);
+    color: var(--color-post-default-fg);
     border: none;
     border-radius: 6px;
     padding: 0.35rem;

@@ -235,7 +235,7 @@
         {#each tasksForDate(currentDate) as task (task.id)}
           {@render taskRow(task)}
         {:else}
-          <p class="empty">{loading ? 'Зареждане...' : 'Няма задачи за днес 🎉'}</p>
+          <p class="empty">{loading ? 'Зареждане...' : 'Няма задачи за днес'}</p>
         {/each}
       </div>
     {:else if viewMode === 'week'}

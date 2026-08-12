@@ -24,6 +24,20 @@
   --color-banner-text: #92400e;
   --color-accent-tint: #eff6ff;
   --color-danger-tint: #fef2f2;
+
+  /* One shared saturation/lightness family per post type (not four unrelated picks) so
+     the four colors read as one coordinated system — only the hue rotates: green/blue/
+     pink/orange, evenly spaced around the wheel for clean at-a-glance separation. */
+  --color-post-reel-bg: #34d399;
+  --color-post-reel-fg: #1e293b;
+  --color-post-post-bg: #60a5fa;
+  --color-post-post-fg: #1e293b;
+  --color-post-story-bg: #f472b6;
+  --color-post-story-fg: #1e293b;
+  --color-post-carrousel-bg: #fb923c;
+  --color-post-carrousel-fg: #1e293b;
+  --color-post-default-bg: #dbeafe;
+  --color-post-default-fg: #1d4ed8;
 }
 
 :root[data-theme='dark'] {
@@ -44,6 +58,19 @@
   --color-banner-text: #fbbf24;
   --color-accent-tint: #1e3a5f;
   --color-danger-tint: #450a0a;
+
+  /* Same hues as light mode, deepened a notch so they sit comfortably on dark surfaces
+     instead of glowing — white text reads better on these than the light mode's navy. */
+  --color-post-reel-bg: #10b981;
+  --color-post-reel-fg: #f8fafc;
+  --color-post-post-bg: #3b82f6;
+  --color-post-post-fg: #f8fafc;
+  --color-post-story-bg: #ec4899;
+  --color-post-story-fg: #f8fafc;
+  --color-post-carrousel-bg: #f97316;
+  --color-post-carrousel-fg: #f8fafc;
+  --color-post-default-bg: #1e3a5f;
+  --color-post-default-fg: #93c5fd;
 }
 
 body {

@@ -5,6 +5,7 @@
     toggleNotifications,
   } from './notifications.js';
   import { getNotificationSettings, updateNotificationSettings } from './api.js';
+  import Icon from './Icon.svelte';
 
   let dropdownOpen = $state(false);
   let modalOpen = $state(false);
@@ -79,7 +80,7 @@
     aria-label="Настройки"
     title="Настройки"
   >
-    ⚙️
+    <Icon name="settings" size="1.05rem" />
   </button>
 
   {#if dropdownOpen}
@@ -143,6 +144,11 @@
   /* Matches MainView's own .theme-toggle exactly (that class is scoped to MainView's
      styles and doesn't reach across components, so it's redefined here). */
   .theme-toggle {
+    /* Buttons don't inherit `color` from an ancestor by default — was only coming out
+       white here by accident, via the unrelated generic `button { color: white }` rule
+       below (meant for the modal's Save/Close buttons). Explicit now, so it doesn't
+       depend on that. */
+    color: inherit;
     background: none;
     border: 1px solid rgba(255, 255, 255, 0.5);
     border-radius: 999px;

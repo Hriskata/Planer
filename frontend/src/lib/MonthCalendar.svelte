@@ -150,6 +150,7 @@
     font-size: 0.7rem;
     color: var(--color-text-muted);
     text-transform: uppercase;
+    letter-spacing: 0.04em;
     padding: 0.4rem 0;
   }
   /* Deliberately a different gray than the cell borders below — otherwise the weekend
@@ -197,8 +198,8 @@
   }
   .chip {
     font-size: 0.65rem;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--color-post-default-bg);
+    color: var(--color-post-default-fg);
     border: none;
     border-radius: 4px;
     padding: 0.1rem 0.3rem;
