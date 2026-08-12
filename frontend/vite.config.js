@@ -55,9 +55,17 @@ export default defineConfig({
   ],
   server: {
     // During development the Vite server proxies /api requests to the backend,
-    // so there's no need for CORS in dev mode.
+    // so there's no need for CORS in dev mode. Overridable via BACKEND_PORT for the
+    // rare case the frontend dev server itself needs to sit on the backend's usual
+    // port (e.g. a quick preview on :3000 while the backend runs alongside on a
+    // different port) — defaults to the normal setup otherwise.
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api': `http://localhost:${process.env.BACKEND_PORT || 3000}`,
+      // Task images live under /uploads, served by the backend's own express.static
+      // (see backend/src/app.js) — same-origin in production (one server for
+      // everything) but never proxied here, so every task photo 404'd whenever this
+      // was actually tested against `vite dev` instead of the Docker build.
+      '/uploads': `http://localhost:${process.env.BACKEND_PORT || 3000}`,
     },
   },
 });
