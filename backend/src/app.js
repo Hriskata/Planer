@@ -27,6 +27,15 @@ app.use(
         'frame-src': ["'self'", 'https://accounts.google.com/gsi/'],
       },
     },
+    // Helmet's own default here is `same-origin`, which severs `window.opener` for ANY
+    // popup this page opens (the browser isolates it into a fresh browsing context
+    // group) — harmless for most popups, but Google's Sign In button opens exactly such
+    // a popup and its own JS calls `window.opener.postMessage(...)` to hand the
+    // credential back, which throws "Cannot read properties of null (reading
+    // 'postMessage')" once opener has been nulled out. same-origin-allow-popups keeps
+    // the isolation for same-origin windows while leaving popups this page itself opens
+    // able to talk back to it.
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   })
 );
 app.use(express.json());
