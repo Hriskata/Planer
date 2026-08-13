@@ -24,8 +24,14 @@ for (const [column, type] of [
   ['color', 'TEXT'],
   ['client', 'TEXT'],
   ['post_type', 'TEXT'],
+  ['priority', 'INTEGER'],
   ['image_path', 'TEXT'],
   ['reminder_sent', 'INTEGER NOT NULL DEFAULT 0'],
+  ['email_on_complete', 'INTEGER NOT NULL DEFAULT 0'],
+  ['email_to', 'TEXT'],
+  ['email_subject', 'TEXT'],
+  ['email_body', 'TEXT'],
+  ['email_sent', 'INTEGER NOT NULL DEFAULT 0'],
 ]) {
   if (!taskColumns.includes(column)) {
     db.exec(`ALTER TABLE tasks ADD COLUMN ${column} ${type}`);
@@ -36,6 +42,20 @@ const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.na
 if (!userColumns.includes('reminder_minutes')) {
   db.exec('ALTER TABLE users ADD COLUMN reminder_minutes INTEGER NOT NULL DEFAULT 10');
 }
+for (const [column, type] of [
+  ['google_id', 'TEXT'],
+  ['email', 'TEXT'],
+  ['email_app_password_enc', 'TEXT'],
+]) {
+  if (!userColumns.includes(column)) {
+    db.exec(`ALTER TABLE users ADD COLUMN ${column} ${type}`);
+  }
+}
+// SQLite enforces UNIQUE via an index, not the inline column constraint alone — ADD
+// COLUMN above can't declare UNIQUE, so it's added separately here. Partial (WHERE
+// google_id IS NOT NULL) so any number of password-only accounts (google_id = NULL)
+// can coexist without tripping the uniqueness check.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL');
 
 // SQLite can't directly relax a NOT NULL constraint on an existing column — the only
 // way is to rebuild the table. Needed so existing databases (from before "unscheduled"
@@ -59,18 +79,26 @@ if (dateColumn?.notnull) {
         color TEXT,
         client TEXT,
         post_type TEXT,
+        priority INTEGER,
         image_path TEXT,
         reminder_sent INTEGER NOT NULL DEFAULT 0,
+        email_on_complete INTEGER NOT NULL DEFAULT 0,
+        email_to TEXT,
+        email_subject TEXT,
+        email_body TEXT,
+        email_sent INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       INSERT INTO tasks_new (
         id, user_id, title, notes, date, time, status, shared,
-        color, client, post_type, image_path, reminder_sent, created_at, updated_at
+        color, client, post_type, priority, image_path, reminder_sent,
+        email_on_complete, email_to, email_subject, email_body, email_sent, created_at, updated_at
       )
       SELECT
         id, user_id, title, notes, date, time, status, shared,
-        color, client, post_type, image_path, reminder_sent, created_at, updated_at
+        color, client, post_type, priority, image_path, reminder_sent,
+        email_on_complete, email_to, email_subject, email_body, email_sent, created_at, updated_at
       FROM tasks;
       DROP TABLE tasks;
       ALTER TABLE tasks_new RENAME TO tasks;

@@ -1,10 +1,13 @@
 <script>
-  import { login } from './api.js';
+  import { onMount } from 'svelte';
+  import { login, loginWithGoogle, getGoogleClientId } from './api.js';
 
   let username = $state('');
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
+  let googleReady = $state(false);
+  let googleButtonEl;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -18,6 +21,55 @@
       loading = false;
     }
   }
+
+  async function handleGoogleCredential(response) {
+    error = '';
+    try {
+      await loginWithGoogle(response.credential);
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  // The Google button only appears once we know a client ID is actually configured
+  // (server-side, via GOOGLE_CLIENT_ID) — otherwise a self-hosted instance without
+  // Google set up would show a button that can only ever fail.
+  onMount(async () => {
+    const clientId = await getGoogleClientId().catch(() => null);
+    if (!clientId) return;
+
+    // Re-mounting this component (logging out and landing back on the login screen,
+    // or any other remount within the same page load) used to inject a second <script>
+    // tag and re-run Google's own init every time — the library is already loaded and
+    // global on window.google after the first mount, so later mounts just reuse it.
+    if (!window.google?.accounts?.id) {
+      const loaded = await new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'https://accounts.google.com/gsi/client';
+        // A blocked/failed script load (offline, an extension, a network policy —
+        // accounts.google.com isn't reachable from every network) used to leave this
+        // awaiting forever, since only onload settled the promise; onerror now
+        // resolves(false) instead, so the form below just falls back to username/password.
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.head.appendChild(script);
+      });
+      if (!loaded) return;
+    }
+
+    window.google.accounts.id.initialize({ client_id: clientId, callback: handleGoogleCredential });
+    googleReady = true;
+  });
+
+  // Renders into the <div> below once it actually exists — an $effect (not a plain
+  // queueMicrotask after `googleReady = true`) so it doesn't depend on Svelte's DOM
+  // update for the {#if googleReady} block happening to land before a hand-scheduled
+  // microtask; it just naturally re-runs once googleButtonEl is bound.
+  $effect(() => {
+    if (googleReady && googleButtonEl) {
+      window.google.accounts.id.renderButton(googleButtonEl, { theme: 'outline', size: 'large', width: 280 });
+    }
+  });
 </script>
 
 <div class="login-screen">
@@ -33,6 +85,11 @@
     </label>
     {#if error}<p class="error">{error}</p>{/if}
     <button type="submit" disabled={loading}>{loading ? 'Влизане...' : 'Вход'}</button>
+
+    {#if googleReady}
+      <div class="divider"><span>или</span></div>
+      <div class="google-button" bind:this={googleButtonEl}></div>
+    {/if}
   </form>
 </div>
 
@@ -64,6 +121,25 @@
     margin: 0 0 0.5rem;
     text-align: center;
     color: var(--color-accent);
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--color-text-faint);
+    font-size: 0.8rem;
+    margin: 0.25rem 0;
+  }
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+  .google-button {
+    display: flex;
+    justify-content: center;
   }
   label {
     display: flex;

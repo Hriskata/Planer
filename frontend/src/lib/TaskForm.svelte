@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { createTask, updateTask, deleteTask, uploadImage } from './api.js';
   import { POST_TYPES } from './postTypes.js';
+  import { PRIORITIES, priorityLabel } from './priorities.js';
   import Icon from './Icon.svelte';
 
   let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
@@ -31,6 +32,9 @@
   let client = $state(untrack(() => source?.client ?? ''));
   let title = $state(untrack(() => source?.title ?? ''));
   let postType = $state(untrack(() => source?.post_type ?? ''));
+  // '' (not 0/null) so the empty "— Без —" <option> below binds correctly — coerced
+  // back to a number or null in handleSubmit.
+  let priority = $state(untrack(() => source?.priority ?? ''));
   // NOT source?.date ?? defaultDate — date is nullable now (an unscheduled/backlog
   // task), and `null ?? defaultDate` would wrongly replace a real "no date" with
   // today's date on every edit. Only a genuinely absent source falls back to it.
@@ -46,6 +50,10 @@
   let imagePath = $state(untrack(() => source?.image_path ?? null));
   let shared = $state(untrack(() => Boolean(source?.shared)));
   let done = $state(untrack(() => task?.status === 'done'));
+  let emailOnComplete = $state(untrack(() => Boolean(source?.email_on_complete)));
+  let emailTo = $state(untrack(() => source?.email_to ?? ''));
+  let emailSubject = $state(untrack(() => source?.email_subject ?? ''));
+  let emailBody = $state(untrack(() => source?.email_body ?? ''));
   let saving = $state(false);
   let error = $state('');
 
@@ -78,6 +86,10 @@
   async function handleSubmit(e) {
     e.preventDefault();
     error = '';
+    if (emailOnComplete && !emailTo.trim()) {
+      error = 'Имейл адресът е задължителен, ако имейл при завършване е включено.';
+      return;
+    }
     saving = true;
     const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
     const payload = {
@@ -88,8 +100,13 @@
       shared,
       client: client || null,
       post_type: postType || null,
+      priority: priority !== '' ? Number(priority) : null,
       image_path: imagePath,
       status: done ? 'done' : 'pending',
+      email_on_complete: emailOnComplete,
+      email_to: emailOnComplete ? emailTo.trim() : null,
+      email_subject: emailOnComplete ? emailSubject || null : null,
+      email_body: emailOnComplete ? emailBody || null : null,
     };
     try {
       if (task) {
@@ -133,13 +150,22 @@
       <input type="text" bind:value={title} required />
     </label>
 
-    <label>
-      Тип пост
-      <select bind:value={postType}>
-        <option value="">— Избери —</option>
-        {#each POST_TYPES as pt}<option value={pt}>{pt}</option>{/each}
-      </select>
-    </label>
+    <div class="row">
+      <label>
+        Тип пост
+        <select bind:value={postType}>
+          <option value="">— Избери —</option>
+          {#each POST_TYPES as pt}<option value={pt}>{pt}</option>{/each}
+        </select>
+      </label>
+      <label>
+        Приоритет (по избор)
+        <select bind:value={priority}>
+          <option value="">— Без —</option>
+          {#each PRIORITIES as p}<option value={p}>{priorityLabel(p)}</option>{/each}
+        </select>
+      </label>
+    </div>
 
     <div class="row">
       <label>
@@ -199,6 +225,29 @@
       <input type="checkbox" bind:checked={shared} />
       Споделена задача (видима за всички потребители)
     </label>
+
+    <label class="checkbox-label">
+      <input type="checkbox" bind:checked={emailOnComplete} />
+      <Icon name="mail" size="1rem" />
+      Изпрати имейл при завършване
+    </label>
+
+    {#if emailOnComplete}
+      <div class="email-fields">
+        <label>
+          Имейл
+          <input type="email" bind:value={emailTo} placeholder="someone@example.com" required />
+        </label>
+        <label>
+          Тема
+          <input type="text" bind:value={emailSubject} placeholder={`Завършена задача: ${title || '...'}`} />
+        </label>
+        <label>
+          Съобщение
+          <textarea bind:value={emailBody} rows="3" placeholder="Текст на имейла..."></textarea>
+        </label>
+      </div>
+    {/if}
 
     {#if error}<p class="error">{error}</p>{/if}
     <div class="form-actions">
@@ -277,6 +326,14 @@
     gap: 0.5rem;
     font-weight: normal;
     color: var(--color-text);
+  }
+  .email-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    background: var(--color-surface-alt);
+    border-radius: 12px;
   }
   .section-divider {
     height: 1px;

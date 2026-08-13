@@ -15,6 +15,7 @@
     monthLabel,
   } from './lib/date.js';
   import { colorForPostType } from './lib/colors.js';
+  import { colorForPriority } from './lib/priorities.js';
   import { theme } from './lib/theme.js';
 
   // Same data/auth as the main app (shared api.js/stores.js) — just a much smaller,
@@ -159,6 +160,9 @@
     style={task.status !== 'done' ? `border-left-color: ${colorForPostType(task.post_type).bg}` : ''}
   >
     <input type="checkbox" checked={task.status === 'done'} onchange={() => toggleDone(task)} />
+    {#if task.priority}
+      <span class="task-priority-dot" style={`background: ${colorForPriority(task.priority)}`}></span>
+    {/if}
     {#if task.time}<span class="task-time">{task.time}</span>{/if}
     <span class="task-label">{postLabel(task)}</span>
   </label>
@@ -456,6 +460,12 @@
     flex-shrink: 0;
     margin: 0;
     cursor: pointer;
+  }
+  .task-priority-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
   .task-time {
     font-weight: 600;

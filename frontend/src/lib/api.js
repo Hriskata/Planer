@@ -35,6 +35,22 @@ export async function login(username, password) {
   auth.set({ token: data.token, user: data.user });
 }
 
+export async function loginWithGoogle(credential) {
+  const data = await request('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  });
+  auth.set({ token: data.token, user: data.user });
+}
+
+// Public (no token needed) — used before the user is logged in, to decide whether to
+// render the "Sign in with Google" button at all.
+export async function getGoogleClientId() {
+  const res = await fetch('/api/auth/google-client-id');
+  const { clientId } = await res.json();
+  return clientId;
+}
+
 export function logout() {
   auth.set(null);
 }
@@ -110,6 +126,15 @@ export async function getNotificationSettings() {
 
 export function updateNotificationSettings(reminderMinutes) {
   return request('/push/settings', { method: 'PUT', body: JSON.stringify({ reminderMinutes }) });
+}
+
+export async function getEmailSenderSettings() {
+  return request('/account/email-sender');
+}
+
+// appPassword omitted = leave the stored one untouched; '' = clear it.
+export function updateEmailSenderSettings({ email, appPassword }) {
+  return request('/account/email-sender', { method: 'PUT', body: JSON.stringify({ email, appPassword }) });
 }
 
 export function createTask(data) {

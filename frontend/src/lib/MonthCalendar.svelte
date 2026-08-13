@@ -1,6 +1,7 @@
 <script>
   import { isWeekend, weekdayNameShort, todayStr } from './date.js';
   import { colorForPostType } from './colors.js';
+  import { colorForPriority } from './priorities.js';
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
   import { getDragState, handlePointerDown, consumeSuppressedClick } from './dragDrop.svelte.js';
 
@@ -113,6 +114,9 @@
                 onEdit(task);
               }}
             >
+              {#if task.priority}
+                <span class="chip-priority-dot" style={`background: ${colorForPriority(task.priority)}`} title={`Приоритет ${task.priority}`}></span>
+              {/if}
               {#if task.time}<span class="chip-time">{task.time}</span>{/if}
               <span class="chip-title">{task.title}</span>
             </button>
@@ -226,6 +230,12 @@
   .chip.dimmed {
     opacity: 0.35;
     filter: grayscale(60%);
+  }
+  .chip-priority-dot {
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
   .chip-time {
     font-weight: 600;

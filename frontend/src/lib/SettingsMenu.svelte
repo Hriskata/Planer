@@ -4,7 +4,12 @@
     syncNotificationState,
     toggleNotifications,
   } from './notifications.js';
-  import { getNotificationSettings, updateNotificationSettings } from './api.js';
+  import {
+    getNotificationSettings,
+    updateNotificationSettings,
+    getEmailSenderSettings,
+    updateEmailSenderSettings,
+  } from './api.js';
   import Icon from './Icon.svelte';
 
   let dropdownOpen = $state(false);
@@ -15,6 +20,15 @@
   let saving = $state(false);
   let error = $state('');
   let saved = $state(false);
+
+  let emailModalOpen = $state(false);
+  let senderEmail = $state('');
+  let senderAppPassword = $state(''); // never pre-filled — the server never returns the real one
+  let hasAppPassword = $state(false);
+  let emailLoading = $state(false);
+  let emailSaving = $state(false);
+  let emailError = $state('');
+  let emailSaved = $state(false);
 
   function openDropdown() {
     dropdownOpen = !dropdownOpen;
@@ -33,6 +47,60 @@
       error = err.message;
     } finally {
       loading = false;
+    }
+  }
+
+  async function openEmailSenderSettings() {
+    dropdownOpen = false;
+    emailModalOpen = true;
+    emailError = '';
+    emailSaved = false;
+    senderAppPassword = '';
+    emailLoading = true;
+    try {
+      const settings = await getEmailSenderSettings();
+      senderEmail = settings.email || '';
+      hasAppPassword = settings.hasAppPassword;
+    } catch (err) {
+      emailError = err.message;
+    } finally {
+      emailLoading = false;
+    }
+  }
+
+  async function saveEmailSender() {
+    emailError = '';
+    emailSaved = false;
+    emailSaving = true;
+    try {
+      // An empty app-password field means "leave it as-is", not "clear it" — trimming to
+      // undefined drops the key entirely (JSON.stringify skips undefined values), which
+      // is exactly what the backend treats as "keep the stored one". Explicit clearing
+      // has its own button below.
+      await updateEmailSenderSettings({ email: senderEmail, appPassword: senderAppPassword.trim() || undefined });
+      hasAppPassword = hasAppPassword || Boolean(senderAppPassword.trim());
+      senderAppPassword = '';
+      emailSaved = true;
+    } catch (err) {
+      emailError = err.message;
+    } finally {
+      emailSaving = false;
+    }
+  }
+
+  async function clearAppPassword() {
+    emailError = '';
+    emailSaved = false;
+    emailSaving = true;
+    try {
+      await updateEmailSenderSettings({ email: senderEmail, appPassword: '' });
+      hasAppPassword = false;
+      senderAppPassword = '';
+      emailSaved = true;
+    } catch (err) {
+      emailError = err.message;
+    } finally {
+      emailSaving = false;
     }
   }
 
@@ -89,6 +157,7 @@
     <div class="backdrop" onclick={() => (dropdownOpen = false)}></div>
     <div class="dropdown">
       <button class="dropdown-item" onclick={openNotificationSettings}>Известия</button>
+      <button class="dropdown-item" onclick={openEmailSenderSettings}>Имейл подател</button>
     </div>
   {/if}
 </div>
@@ -130,6 +199,58 @@
           <button class="secondary" onclick={() => (modalOpen = false)}>Затвори</button>
           <button onclick={saveReminderMinutes} disabled={saving || !$notificationsEnabled}>
             {saving ? 'Запазване...' : 'Запази'}
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if emailModalOpen}
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) emailModalOpen = false;
+    }}
+    role="presentation"
+  >
+    <div class="modal">
+      <h2>Имейл подател</h2>
+      <p class="hint">
+        Използва се за автоматизацията "изпрати имейл при завършване" в задачите — писмата тръгват
+        през твоя Gmail, не през общ сървърен акаунт.
+      </p>
+
+      {#if emailLoading}
+        <p class="hint">Зареждане...</p>
+      {:else}
+        <label class="field-row">
+          <span>Gmail адрес</span>
+          <input type="email" bind:value={senderEmail} placeholder="you@gmail.com" />
+        </label>
+
+        <label class="field-row">
+          <span>App Password{hasAppPassword ? ' (запазена)' : ''}</span>
+          <input
+            type="password"
+            bind:value={senderAppPassword}
+            placeholder={hasAppPassword ? '•••• •••• •••• ••••' : 'abcd efgh ijkl mnop'}
+            autocomplete="off"
+          />
+        </label>
+        {#if hasAppPassword}
+          <button type="button" class="link-button" onclick={clearAppPassword} disabled={emailSaving}>
+            Премахни паролата
+          </button>
+        {/if}
+
+        {#if emailError}<p class="error">{emailError}</p>{/if}
+        {#if emailSaved}<p class="hint success">Запазено.</p>{/if}
+
+        <div class="modal-actions">
+          <button class="secondary" onclick={() => (emailModalOpen = false)}>Затвори</button>
+          <button onclick={saveEmailSender} disabled={emailSaving}>
+            {emailSaving ? 'Запазване...' : 'Запази'}
           </button>
         </div>
       {/if}
@@ -241,6 +362,35 @@
   .minutes-row input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+  .field-row input {
+    padding: 0.55rem 0.65rem;
+    font-size: 0.9rem;
+    font-weight: normal;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 8px;
+  }
+  .link-button {
+    align-self: flex-start;
+    background: none;
+    padding: 0;
+    font-size: 0.8rem;
+    font-weight: normal;
+    color: var(--color-text-faint);
+    text-decoration: underline;
+  }
+  .link-button:hover {
+    color: var(--color-danger);
   }
   input[type='checkbox'] {
     width: 1.15rem;

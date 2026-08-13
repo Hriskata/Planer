@@ -18,6 +18,7 @@
   import BacklogColumn from './BacklogColumn.svelte';
   import { extractClients } from './search.js';
   import { POST_TYPES } from './postTypes.js';
+  import { PRIORITIES, priorityLabel } from './priorities.js';
   import { theme, toggleTheme } from './theme.js';
   import SettingsMenu from './SettingsMenu.svelte';
   import Icon from './Icon.svelte';
@@ -43,16 +44,19 @@
   let searchQuery = $state('');
   let selectedClient = $state(''); // '' = all clients
   let selectedPostType = $state(''); // '' = all post types
+  let selectedPriority = $state(''); // '' = all priorities
   let searchEnabled = $state(true);
 
   const weekDates = $derived(getWeekDates(currentDate));
   const monthDates = $derived(getMonthGridDates(currentDate));
   const referenceMonth = $derived(currentDate.slice(0, 7));
   // {} when the filter is off (via the toggle) — passed down as "no filter" to every
-  // view, so this is the single on/off switch. Otherwise text/client/postType each
-  // narrow the result further (AND) — see taskMatchesFilters.
+  // view, so this is the single on/off switch. Otherwise text/client/postType/priority
+  // each narrow the result further (AND) — see taskMatchesFilters.
   const activeFilters = $derived(
-    searchEnabled ? { text: searchQuery, client: selectedClient, postType: selectedPostType } : {}
+    searchEnabled
+      ? { text: searchQuery, client: selectedClient, postType: selectedPostType, priority: selectedPriority }
+      : {}
   );
   const availableClients = $derived(extractClients(tasks));
 
@@ -60,6 +64,7 @@
     searchQuery = '';
     selectedClient = '';
     selectedPostType = '';
+    selectedPriority = '';
   }
 
   // silent=true skips the `loading` flag for refreshes after a mutation (toggle/delete/
@@ -241,7 +246,16 @@
     <option value="">Всички типове</option>
     {#each POST_TYPES as pt}<option value={pt}>{pt}</option>{/each}
   </select>
-  {#if searchQuery || selectedClient || selectedPostType}
+  <select
+    class="filter-select"
+    bind:value={selectedPriority}
+    onchange={() => (searchEnabled = true)}
+    aria-label="Филтър по приоритет"
+  >
+    <option value="">Всички приоритети</option>
+    {#each PRIORITIES as p}<option value={p}>{priorityLabel(p)}</option>{/each}
+  </select>
+  {#if searchQuery || selectedClient || selectedPostType || selectedPriority}
     <button class="tag-chip clear-all" onclick={clearFilters}>Изчисти всички</button>
   {/if}
 </div>

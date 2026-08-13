@@ -38,6 +38,14 @@
   --color-post-carrousel-fg: #1e293b;
   --color-post-default-bg: #dbeafe;
   --color-post-default-fg: #1d4ed8;
+
+  /* Priority 1 (most urgent) to 4 (least) — a red-to-gray urgency gradient, deliberately
+     a different visual language than the post-type hues above (a dot, not a fill) so the
+     two don't compete for the same "what color is this" read on a tile. */
+  --color-priority-1: #ef4444;
+  --color-priority-2: #f97316;
+  --color-priority-3: #eab308;
+  --color-priority-4: #94a3b8;
 }
 
 :root[data-theme='dark'] {
@@ -71,6 +79,11 @@
   --color-post-carrousel-fg: #f8fafc;
   --color-post-default-bg: #1e3a5f;
   --color-post-default-fg: #93c5fd;
+
+  --color-priority-1: #f87171;
+  --color-priority-2: #fb923c;
+  --color-priority-3: #facc15;
+  --color-priority-4: #64748b;
 }
 
 body {

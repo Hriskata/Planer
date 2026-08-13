@@ -1,11 +1,33 @@
 const express = require('express');
 const db = require('../db');
+const { sendTaskCompletionEmail } = require('../email');
+const { EMAIL_RE } = require('../validators');
 
 const router = express.Router();
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 const VALID_STATUS = ['pending', 'done'];
+
+// email_on_complete/email_to/email_subject/email_body/email_sent are the task OWNER's
+// private automation config (who gets emailed, with what message) — redacted to
+// off/NULL here for rows only visible via shared = 1, since a collaborator has no
+// reason to see who someone else's completion email goes to. Shared between both GET
+// routes below so the redaction rule can't drift out of sync between them.
+const REDACTED_EMAIL_COLUMNS = `
+  CASE WHEN user_id = @userId THEN email_on_complete ELSE 0 END AS email_on_complete,
+  CASE WHEN user_id = @userId THEN email_to ELSE NULL END AS email_to,
+  CASE WHEN user_id = @userId THEN email_subject ELSE NULL END AS email_subject,
+  CASE WHEN user_id = @userId THEN email_body ELSE NULL END AS email_body,
+  CASE WHEN user_id = @userId THEN email_sent ELSE 0 END AS email_sent
+`;
+
+// The "sender" for a completion email is always the acting user themselves (you can
+// only ever complete your own tasks — see the ownership check in PUT /:id below), so
+// this is keyed off req.user.id in both call sites below, not the task's own user_id.
+function getEmailSender(userId) {
+  return db.prepare('SELECT id, email, email_app_password_enc FROM users WHERE id = ?').get(userId);
+}
 
 function validateTaskInput(body, { partial = false } = {}) {
   const errors = [];
@@ -71,8 +93,9 @@ function validateTaskInput(body, { partial = false } = {}) {
     data.notes = null;
   }
 
-  // client, post_type, image_path: simple optional text fields, same shape as notes.
-  for (const field of ['client', 'post_type', 'image_path']) {
+  // client, post_type, image_path, email_subject, email_body: simple optional text
+  // fields, same shape as notes.
+  for (const field of ['client', 'post_type', 'image_path', 'email_subject', 'email_body']) {
     if (body[field] !== undefined) {
       if (body[field] !== null) {
         if (typeof body[field] !== 'string') {
@@ -86,6 +109,40 @@ function validateTaskInput(body, { partial = false } = {}) {
     } else if (!partial) {
       data[field] = null;
     }
+  }
+
+  if (body.email_to !== undefined) {
+    if (body.email_to !== null) {
+      if (typeof body.email_to !== 'string' || !EMAIL_RE.test(body.email_to)) {
+        errors.push('email_to трябва да е валиден имейл адрес.');
+      } else {
+        data.email_to = body.email_to;
+      }
+    } else {
+      data.email_to = null;
+    }
+  } else if (!partial) {
+    data.email_to = null;
+  }
+
+  if (body.email_on_complete !== undefined) {
+    data.email_on_complete = body.email_on_complete ? 1 : 0;
+  } else if (!partial) {
+    data.email_on_complete = 0;
+  }
+
+  if (body.priority !== undefined) {
+    if (body.priority !== null) {
+      if (!Number.isInteger(body.priority) || body.priority < 1 || body.priority > 4) {
+        errors.push('priority трябва да е цяло число от 1 до 4.');
+      } else {
+        data.priority = body.priority;
+      }
+    } else {
+      data.priority = null;
+    }
+  } else if (!partial) {
+    data.priority = null;
   }
 
   if (body.status !== undefined) {
@@ -102,6 +159,15 @@ function validateTaskInput(body, { partial = false } = {}) {
     data.shared = body.shared ? 1 : 0;
   } else if (!partial) {
     data.shared = 0;
+  }
+
+  // Cross-field: "send an email" only makes sense with a recipient. On a full create,
+  // every field above already has a value (explicit or defaulted), so this can be
+  // checked right here; a partial update may be touching neither field (leaving both at
+  // whatever they already were) or only one of them, so that combined check happens in
+  // the route handler instead, once it has the full merged record to look at.
+  if (!partial && data.email_on_complete && !data.email_to) {
+    errors.push('email_to е задължителен, ако имейл при завършване е включен.');
   }
 
   return { errors, data };
@@ -124,7 +190,8 @@ router.get('/', (req, res) => {
   // the frontend only ever sends one or the other.
   const baseQuery = `
     SELECT id, user_id, title, notes, date, time, status, shared, color,
-           client, post_type, image_path, created_at, updated_at
+           client, post_type, priority, image_path, created_at, updated_at,
+           ${REDACTED_EMAIL_COLUMNS}
     FROM tasks
     WHERE (user_id = @userId OR shared = 1)
       AND (@date IS NULL OR date = @date)
@@ -147,7 +214,10 @@ router.get('/', (req, res) => {
 router.get('/unscheduled', (req, res) => {
   const rows = db
     .prepare(
-      `SELECT * FROM tasks
+      `SELECT id, user_id, title, notes, date, time, status, shared, color,
+              client, post_type, priority, image_path, reminder_sent, created_at, updated_at,
+              ${REDACTED_EMAIL_COLUMNS}
+       FROM tasks
        WHERE (user_id = @userId OR shared = 1) AND date IS NULL
        ORDER BY created_at DESC`
     )
@@ -163,13 +233,36 @@ router.post('/', (req, res) => {
 
   const result = db
     .prepare(
-      `INSERT INTO tasks (user_id, title, notes, date, time, status, shared, client, post_type, image_path)
-       VALUES (@userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @image_path)`
+      `INSERT INTO tasks (
+         user_id, title, notes, date, time, status, shared, client, post_type, priority,
+         image_path, email_on_complete, email_to, email_subject, email_body
+       )
+       VALUES (
+         @userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @priority,
+         @image_path, @email_on_complete, @email_to, @email_subject, @email_body
+       )`
     )
     .run({ userId: req.user.id, ...data });
 
   const created = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(created);
+
+  // Rare (the UI always creates tasks as pending), but a direct API call could create
+  // one already marked done — treat that the same as any other completion. Fired after
+  // the response, not awaited: an SMTP round trip has no business making a task-save
+  // request wait on it, and staying synchronous here (no async handler) means a DB
+  // error above still hits Express's normal synchronous error handling instead of
+  // becoming an unhandled rejection (Express 4 doesn't catch those on its own).
+  if (created.status === 'done' && created.email_on_complete && created.email_to) {
+    const sender = getEmailSender(req.user.id);
+    sendTaskCompletionEmail(created, sender)
+      .then((sent) => {
+        if (sent) db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(created.id);
+      })
+      .catch((err) => {
+        console.error('Имейл при завършване — грешка за задача', created.id, ':', err.message);
+      });
+  }
 });
 
 router.put('/:id', (req, res) => {
@@ -188,19 +281,42 @@ router.put('/:id', (req, res) => {
   }
 
   const merged = { ...task, ...data };
+  // Unlike a full create, a partial update may leave email_on_complete/email_to
+  // untouched (keeping whatever the task already had) or change only one of them —
+  // validateTaskInput can't see that combined picture, so the cross-field check happens
+  // here instead, against the final merged record.
+  if (merged.email_on_complete && !merged.email_to) {
+    return res.status(400).json({ errors: ['email_to е задължителен, ако имейл при завършване е включен.'] });
+  }
+
   // Rescheduling (a new date and/or time) means any already-sent 10-min-before
   // reminder was for the old moment — reset it so the new one still gets a reminder.
   const rescheduled =
     ('date' in data && data.date !== task.date) || ('time' in data && data.time !== task.time);
   const reminderSent = rescheduled ? 0 : task.reminder_sent;
 
+  const becameUndone = task.status === 'done' && merged.status !== 'done';
+  // Un-completing resets the flag so a later re-completion sends again; completing
+  // sends (see below) and is recorded once that actually succeeds — a failed send
+  // (bad address, SMTP down) leaves it at 0 so the NEXT completion can retry, rather
+  // than silently marking a mail that never went out as sent.
+  let emailSent = becameUndone ? 0 : task.email_sent;
+  // Not just "did status change to done in THIS request" — also covers turning email
+  // on complete on (or filling in email_to) while the task was already sitting done,
+  // which used to never send until the task got toggled off and on again. The guard is
+  // "still hasn't been sent for the current done streak" (task.email_sent, the
+  // pre-update value), not becameUndone/emailSent above.
+  const shouldSendEmail = merged.status === 'done' && merged.email_on_complete && merged.email_to && !task.email_sent;
+
   // We pass only exactly the keys that appear in the SQL text — node:sqlite throws
   // on a named parameter in the object that has no matching placeholder.
   db.prepare(
     `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
        status = @status, shared = @shared, client = @client,
-       post_type = @post_type, image_path = @image_path, reminder_sent = @reminderSent,
-       updated_at = datetime('now')
+       post_type = @post_type, priority = @priority, image_path = @image_path,
+       email_on_complete = @email_on_complete, email_to = @email_to,
+       email_subject = @email_subject, email_body = @email_body, email_sent = @emailSent,
+       reminder_sent = @reminderSent, updated_at = datetime('now')
      WHERE id = @id`
   ).run({
     title: merged.title,
@@ -211,13 +327,31 @@ router.put('/:id', (req, res) => {
     shared: merged.shared,
     client: merged.client,
     post_type: merged.post_type,
+    priority: merged.priority,
     image_path: merged.image_path,
+    email_on_complete: merged.email_on_complete,
+    email_to: merged.email_to,
+    email_subject: merged.email_subject,
+    email_body: merged.email_body,
+    emailSent,
     reminderSent,
     id: task.id,
   });
 
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id);
   res.json(updated);
+
+  // Fired after the response, not awaited — see the identical reasoning in POST above.
+  if (shouldSendEmail) {
+    const sender = getEmailSender(req.user.id);
+    sendTaskCompletionEmail(merged, sender)
+      .then((sent) => {
+        if (sent) db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(task.id);
+      })
+      .catch((err) => {
+        console.error('Имейл при завършване — грешка за задача', task.id, ':', err.message);
+      });
+  }
 });
 
 router.delete('/:id', (req, res) => {

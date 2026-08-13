@@ -1,5 +1,6 @@
 <script>
   import { colorForPostType } from './colors.js';
+  import { colorForPriority } from './priorities.js';
   import { handlePointerDown, getDragState, consumeSuppressedClick } from './dragDrop.svelte.js';
 
   // Used identically everywhere a post renders (week view, day view, the backlog
@@ -49,6 +50,12 @@
   }}
 >
   <div class="post-header">
+    {#if task.priority}
+      <span class="priority-badge" title={`Приоритет ${task.priority}`}>
+        <span class="priority-dot" style={`background: ${colorForPriority(task.priority)}`}></span>
+        P{task.priority}
+      </span>
+    {/if}
     <span class="post-label">{postLabel()}</span>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <!-- Stops the click from bubbling to the tile's own onclick (which opens the edit
@@ -114,6 +121,21 @@
     font-weight: 600;
     flex: 1;
     min-width: 0;
+  }
+  .priority-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+  .priority-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
   .post-done {
     display: flex;

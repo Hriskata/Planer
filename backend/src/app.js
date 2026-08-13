@@ -9,10 +9,26 @@ const authRouter = require('./routes/auth');
 const tasksRouter = require('./routes/tasks');
 const uploadsRouter = require('./routes/uploads');
 const pushRouter = require('./routes/push');
+const accountRouter = require('./routes/account');
 
 const app = express();
 
-app.use(helmet());
+// Google Identity Services (the "Sign in with Google" button) loads a script from
+// accounts.google.com and renders its consent UI in an iframe — helmet's default CSP
+// blocks both by default, so those origins are explicitly allowed here rather than
+// disabling the policy altogether.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'script-src': ["'self'", 'https://accounts.google.com/gsi/client'],
+        'connect-src': ["'self'", 'https://accounts.google.com/gsi/'],
+        'frame-src': ["'self'", 'https://accounts.google.com/gsi/'],
+      },
+    },
+  })
+);
 app.use(express.json());
 
 // CORS only when CORS_ORIGIN is set (dev, separate Vite server).
@@ -26,6 +42,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/tasks', requireAuth, tasksRouter);
 app.use('/api/uploads', requireAuth, uploadsRouter);
 app.use('/api/push', requireAuth, pushRouter);
+app.use('/api/account', requireAuth, accountRouter);
 
 // Uploaded task images. Deliberately public (not behind requireAuth) — a plain <img
 // src> can't attach the JWT header, and filenames are random UUIDs, not guessable.
