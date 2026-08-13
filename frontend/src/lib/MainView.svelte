@@ -21,6 +21,7 @@
   import { PRIORITIES, priorityLabel } from './priorities.js';
   import { theme, toggleTheme } from './theme.js';
   import SettingsMenu from './SettingsMenu.svelte';
+  import CalendarSwitcher from './CalendarSwitcher.svelte';
   import Icon from './Icon.svelte';
   import {
     getDragState,
@@ -46,6 +47,11 @@
   let selectedPostType = $state(''); // '' = all post types
   let selectedPriority = $state(''); // '' = all priorities
   let searchEnabled = $state(true);
+  // null = your own calendar; otherwise the owner id of a calendar shared with you (see
+  // CalendarSwitcher.svelte) — everything mutating (create/edit/toggle/drag) is disabled
+  // while viewing someone else's, since sharing is read-only.
+  let activeCalendarOwnerId = $state(null);
+  const readOnly = $derived(activeCalendarOwnerId !== null);
 
   const weekDates = $derived(getWeekDates(currentDate));
   const monthDates = $derived(getMonthGridDates(currentDate));
@@ -67,36 +73,48 @@
     selectedPriority = '';
   }
 
+  // Bumped on every call, and stamped on each in-flight request — if a newer call has
+  // started by the time an older one's responses come back (e.g. rapidly switching the
+  // CalendarSwitcher, or flipping view/date twice before the first fetch lands), the
+  // stale one discards its results instead of overwriting newer data with older, out of
+  // order arrival isn't guaranteed to match request order.
+  let loadGeneration = 0;
+
   // silent=true skips the `loading` flag for refreshes after a mutation (toggle/delete/
   // save) — otherwise the {#if loading} branch below briefly unmounts WeekCalendar/
   // MonthCalendar for no visible reason.
   async function loadTasks({ silent = false } = {}) {
+    const generation = ++loadGeneration;
     if (!silent) loading = true;
     error = '';
     try {
       let result;
       if (viewMode === 'day') {
-        result = await getTasks(currentDate);
+        result = await getTasks(currentDate, activeCalendarOwnerId);
       } else if (viewMode === 'week') {
-        result = await getTasksRange(weekDates[0], weekDates[weekDates.length - 1]);
+        result = await getTasksRange(weekDates[0], weekDates[weekDates.length - 1], activeCalendarOwnerId);
       } else {
-        result = await getTasksRange(monthDates[0], monthDates[monthDates.length - 1]);
+        result = await getTasksRange(monthDates[0], monthDates[monthDates.length - 1], activeCalendarOwnerId);
       }
+
+      const unscheduledResult = await getUnscheduledTasks(activeCalendarOwnerId);
+
+      if (generation !== loadGeneration) return; // superseded by a later call while these were in flight
       tasks = result.tasks;
       offline = result.offline;
-
-      const unscheduledResult = await getUnscheduledTasks();
       unscheduledTasks = unscheduledResult.tasks;
     } catch (err) {
+      if (generation !== loadGeneration) return;
       error = err.message;
     } finally {
-      if (!silent) loading = false;
+      if (generation === loadGeneration && !silent) loading = false;
     }
   }
 
   $effect(() => {
     currentDate;
     viewMode;
+    activeCalendarOwnerId;
     loadTasks();
   });
 
@@ -144,6 +162,10 @@
   }
 
   async function handleToggleStatus(task) {
+    // Belt-and-suspenders — the checkbox that calls this is already disabled while
+    // readOnly (see PostTile), this just makes sure nothing can mutate a shared
+    // calendar even if some other path ever reaches this function.
+    if (readOnly) return;
     const next = task.status === 'done' ? 'pending' : 'done';
     try {
       await updateTask(task.id, { status: next });
@@ -156,6 +178,7 @@
   // Drag-and-drop only ever changes the date — there's no hour grid to express a new
   // time against anymore.
   async function handleMoveTask(task, changes) {
+    if (readOnly) return; // dragging never actually starts while readOnly; see PostTile
     try {
       await updateTask(task.id, changes);
       await loadTasks({ silent: true });
@@ -182,7 +205,11 @@
 <header>
   <h1>Планер</h1>
   <div class="header-actions">
-    <span class="user">{$auth.user.username}</span>
+    <CalendarSwitcher
+      ownUsername={$auth.user.username}
+      activeOwnerId={activeCalendarOwnerId}
+      onSelect={(ownerId) => (activeCalendarOwnerId = ownerId)}
+    />
     <SettingsMenu />
     <button
       class="theme-toggle"
@@ -278,14 +305,16 @@
                schedules it for the day currently being viewed. -->
           <div
             class="day-grid"
+            class:read-only={readOnly}
             data-date={currentDate}
             onclick={(e) => {
+              if (readOnly) return;
               if (e.target.closest('.post')) return;
               handleGridCreate(currentDate, null);
             }}
           >
             {#each tasks as task (task.id)}
-              <PostTile {task} onEdit={openEditForm} onToggle={handleToggleStatus} />
+              <PostTile {task} onEdit={openEditForm} onToggle={handleToggleStatus} {readOnly} />
             {:else}
               <p class="empty">Няма задачи за този ден.</p>
             {/each}
@@ -298,6 +327,7 @@
             onEdit={openEditForm}
             onToggle={handleToggleStatus}
             onCreate={handleGridCreate}
+            {readOnly}
           />
         {:else}
           <h2>{monthLabel(currentDate)}</h2>
@@ -309,6 +339,7 @@
             onEdit={openEditForm}
             onDayClick={handleDayClick}
             onCreate={handleGridCreate}
+            {readOnly}
           />
         {/if}
       </div>
@@ -316,6 +347,7 @@
       <BacklogColumn
         tasks={unscheduledTasks}
         searchFilter={activeFilters}
+        {readOnly}
         onEdit={openEditForm}
         onToggle={handleToggleStatus}
       />
@@ -329,7 +361,9 @@
   </div>
 {/if}
 
-<button class="fab" onclick={openNewTaskForm} aria-label="Нова задача">+</button>
+{#if !readOnly}
+  <button class="fab" onclick={openNewTaskForm} aria-label="Нова задача">+</button>
+{/if}
 
 {#if showForm}
   <!-- Keyed so switching from "edit task A" to "duplicate of task A" (which keeps
@@ -345,6 +379,7 @@
       onSaved={handleFormSaved}
       onCancel={() => (showForm = false)}
       onDuplicate={handleDuplicate}
+      {readOnly}
     />
   {/key}
 {/if}
@@ -536,6 +571,9 @@
     gap: 0.75rem;
     min-height: 120px;
     cursor: pointer;
+  }
+  .day-grid.read-only {
+    cursor: default;
   }
   .drag-ghost {
     position: fixed;

@@ -5,7 +5,7 @@
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
   import { getDragState, handlePointerDown, consumeSuppressedClick } from './dragDrop.svelte.js';
 
-  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate } = $props();
+  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate, readOnly = false } = $props();
 
   const MAX_CHIPS = 3;
   const today = todayStr();
@@ -69,6 +69,7 @@
   // their own clicks (navigate/edit), so this only fires when the click didn't land on
   // one of them.
   function handleCellClick(e, date) {
+    if (readOnly) return;
     if (consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('button')) return;
     onCreate(date);
@@ -108,7 +109,9 @@
               class:dimmed={isDimmed(task)}
               class:dragging={getDragState()?.task.id === task.id}
               style={chipStyle(task)}
-              onpointerdown={(e) => handlePointerDown(e, task)}
+              onpointerdown={(e) => {
+                if (!readOnly) handlePointerDown(e, task);
+              }}
               onclick={() => {
                 if (consumeSuppressedClick()) return;
                 onEdit(task);

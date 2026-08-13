@@ -20,7 +20,7 @@
 {#if $auth}
   <MainView />
 {:else if showLogin}
-  <LoginView />
+  <LoginView onBack={() => (showLogin = false)} />
 {:else}
   <LandingPage onEnter={() => (showLogin = true)} />
 {/if}

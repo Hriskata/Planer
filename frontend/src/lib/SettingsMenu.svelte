@@ -9,6 +9,9 @@
     updateNotificationSettings,
     getEmailSenderSettings,
     updateEmailSenderSettings,
+    getMyShares,
+    addCalendarShare,
+    removeCalendarShare,
   } from './api.js';
   import Icon from './Icon.svelte';
 
@@ -29,6 +32,13 @@
   let emailSaving = $state(false);
   let emailError = $state('');
   let emailSaved = $state(false);
+
+  let sharingModalOpen = $state(false);
+  let shares = $state([]);
+  let newShareEmail = $state('');
+  let sharingLoading = $state(false);
+  let sharingSaving = $state(false);
+  let sharingError = $state('');
 
   function openDropdown() {
     dropdownOpen = !dropdownOpen;
@@ -104,6 +114,46 @@
     }
   }
 
+  async function openSharingSettings() {
+    dropdownOpen = false;
+    sharingModalOpen = true;
+    sharingError = '';
+    newShareEmail = '';
+    sharingLoading = true;
+    try {
+      shares = await getMyShares();
+    } catch (err) {
+      sharingError = err.message;
+    } finally {
+      sharingLoading = false;
+    }
+  }
+
+  async function addShare(e) {
+    e.preventDefault();
+    sharingError = '';
+    sharingSaving = true;
+    try {
+      await addCalendarShare(newShareEmail);
+      newShareEmail = '';
+      shares = await getMyShares();
+    } catch (err) {
+      sharingError = err.message;
+    } finally {
+      sharingSaving = false;
+    }
+  }
+
+  async function removeShare(id) {
+    sharingError = '';
+    try {
+      await removeCalendarShare(id);
+      shares = shares.filter((s) => s.id !== id);
+    } catch (err) {
+      sharingError = err.message;
+    }
+  }
+
   async function handleToggle(e) {
     error = '';
     try {
@@ -158,6 +208,7 @@
     <div class="dropdown">
       <button class="dropdown-item" onclick={openNotificationSettings}>Известия</button>
       <button class="dropdown-item" onclick={openEmailSenderSettings}>Имейл подател</button>
+      <button class="dropdown-item" onclick={openSharingSettings}>Споделяне на календар</button>
     </div>
   {/if}
 </div>
@@ -252,6 +303,55 @@
           <button onclick={saveEmailSender} disabled={emailSaving}>
             {emailSaving ? 'Запазване...' : 'Запази'}
           </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if sharingModalOpen}
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) sharingModalOpen = false;
+    }}
+    role="presentation"
+  >
+    <div class="modal">
+      <h2>Споделяне на календар</h2>
+      <p class="hint">
+        Имейлите тук виждат целия ти календар (само преглед, не могат да редактират) — щом
+        влязат с този имейл (Google или като си зададат същия в "Имейл подател"), той се
+        появява в падащото меню горе вляво при тях.
+      </p>
+
+      {#if sharingLoading}
+        <p class="hint">Зареждане...</p>
+      {:else}
+        {#if shares.length > 0}
+          <ul class="share-list">
+            {#each shares as s (s.id)}
+              <li>
+                <span>{s.shared_email}</span>
+                <button type="button" class="remove-share" onclick={() => removeShare(s.id)} aria-label="Премахни">
+                  ×
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="hint">Все още не си споделил/а календара си с никого.</p>
+        {/if}
+
+        <form class="add-share-row" onsubmit={addShare}>
+          <input type="email" bind:value={newShareEmail} placeholder="someone@example.com" required />
+          <button type="submit" disabled={sharingSaving}>{sharingSaving ? '...' : 'Добави'}</button>
+        </form>
+
+        {#if sharingError}<p class="error">{sharingError}</p>{/if}
+
+        <div class="modal-actions">
+          <button class="secondary" onclick={() => (sharingModalOpen = false)}>Затвори</button>
         </div>
       {/if}
     </div>
@@ -391,6 +491,66 @@
   }
   .link-button:hover {
     color: var(--color-danger);
+  }
+  .share-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 10rem;
+    overflow-y: auto;
+  }
+  .share-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.7rem;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--color-text);
+  }
+  .share-list li span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .remove-share {
+    flex-shrink: 0;
+    width: 1.4rem;
+    height: 1.4rem;
+    padding: 0;
+    background: none;
+    color: var(--color-text-faint);
+    border-radius: 50%;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .remove-share:hover {
+    background: var(--color-danger-tint);
+    color: var(--color-danger);
+  }
+  .add-share-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .add-share-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 8px;
+  }
+  .add-share-row button {
+    flex-shrink: 0;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
   }
   input[type='checkbox'] {
     width: 1.15rem;

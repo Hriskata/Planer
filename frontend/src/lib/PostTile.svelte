@@ -5,7 +5,10 @@
 
   // Used identically everywhere a post renders (week view, day view, the backlog
   // column) so the same content always looks the same regardless of where it appears.
-  let { task, dimmed = false, onEdit, onToggle } = $props();
+  // readOnly: viewing someone else's shared calendar (see CalendarSwitcher.svelte) —
+  // no drag, no toggling done; the tile still opens on click, MainView just renders
+  // TaskForm itself in read-only mode when this is set.
+  let { task, dimmed = false, onEdit, onToggle, readOnly = false } = $props();
 
   // Done tasks always render gray+struck-through (CSS class) regardless of post-type
   // color — an inline style would otherwise win the cascade over that class, so this
@@ -37,7 +40,9 @@
   style={tileColorStyle()}
   role="button"
   tabindex="0"
-  onpointerdown={(e) => handlePointerDown(e, task)}
+  onpointerdown={(e) => {
+    if (!readOnly) handlePointerDown(e, task);
+  }}
   onclick={() => {
     if (consumeSuppressedClick()) return;
     onEdit(task);
@@ -61,7 +66,7 @@
     <!-- Stops the click from bubbling to the tile's own onclick (which opens the edit
          form) — toggling done shouldn't also open the form. -->
     <label class="post-done" onclick={(e) => e.stopPropagation()}>
-      <input type="checkbox" checked={task.status === 'done'} onchange={() => onToggle(task)} />
+      <input type="checkbox" checked={task.status === 'done'} onchange={() => onToggle(task)} disabled={readOnly} />
       Завършен
     </label>
   </div>

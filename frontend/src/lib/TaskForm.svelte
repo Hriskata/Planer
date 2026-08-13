@@ -5,7 +5,16 @@
   import { PRIORITIES, priorityLabel } from './priorities.js';
   import Icon from './Icon.svelte';
 
-  let { task = null, duplicateFrom = null, defaultDate, defaultTime = null, onSaved, onCancel, onDuplicate } = $props();
+  let {
+    task = null,
+    duplicateFrom = null,
+    defaultDate,
+    defaultTime = null,
+    onSaved,
+    onCancel,
+    onDuplicate,
+    readOnly = false,
+  } = $props();
 
   // When duplicating, `task` is null (this is a create, not an edit) but fields are
   // pre-filled from `duplicateFrom`. `task` itself still drives edit-only UI (delete,
@@ -138,8 +147,12 @@
 
 <div class="overlay" onclick={(e) => { if (e.target === e.currentTarget) onCancel(); }} role="presentation">
   <form onsubmit={handleSubmit}>
-    <h2>{task ? 'Редакция на пост' : 'Нов пост'}</h2>
+    <h2>{readOnly ? 'Преглед на пост' : task ? 'Редакция на пост' : 'Нов пост'}</h2>
 
+    <!-- disabled on the fieldset, not every single field — HTML disables every
+         descendant input/select/textarea/button in one place instead of threading
+         readOnly onto each of the dozen fields below individually. -->
+    <fieldset disabled={readOnly}>
     <label>
       Клиент
       <input type="text" bind:value={client} placeholder="Име на клиента" />
@@ -250,14 +263,21 @@
     {/if}
 
     {#if error}<p class="error">{error}</p>{/if}
+    </fieldset>
+
     <div class="form-actions">
-      {#if task}
-        <button type="button" class="danger" onclick={handleDelete} disabled={saving}>Изтрий</button>
-        <button type="button" class="secondary" onclick={() => onDuplicate(task)}>Копирай</button>
+      {#if readOnly}
+        <div class="spacer"></div>
+        <button type="button" class="secondary" onclick={onCancel}>Затвори</button>
+      {:else}
+        {#if task}
+          <button type="button" class="danger" onclick={handleDelete} disabled={saving}>Изтрий</button>
+          <button type="button" class="secondary" onclick={() => onDuplicate(task)}>Копирай</button>
+        {/if}
+        <div class="spacer"></div>
+        <button type="button" class="secondary" onclick={onCancel}>Отказ</button>
+        <button type="submit" disabled={saving}>{saving ? 'Запазване...' : 'Запази'}</button>
       {/if}
-      <div class="spacer"></div>
-      <button type="button" class="secondary" onclick={onCancel}>Отказ</button>
-      <button type="submit" disabled={saving}>{saving ? 'Запазване...' : 'Запази'}</button>
     </div>
   </form>
 </div>
@@ -291,6 +311,15 @@
     margin: 0 0 0.25rem;
     font-size: 1.35rem;
     color: var(--color-text);
+  }
+  /* display: contents strips the fieldset's own box out of the layout entirely — its
+     children lay out directly in the form's flex column, as if the wrapper weren't
+     there, while `disabled` on it still reaches every descendant field/button. */
+  fieldset {
+    display: contents;
+    border: none;
+    padding: 0;
+    margin: 0;
   }
   label {
     display: flex;

@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { encrypt } = require('../crypto');
 const { invalidateTransporter } = require('../email');
-const { EMAIL_RE } = require('../validators');
+const { EMAIL_RE, normalizeEmail } = require('../validators');
 
 const router = express.Router();
 
@@ -33,7 +33,7 @@ router.put('/email-sender', (req, res) => {
   // which wiped the stored address on any update that didn't happen to include it (e.g.
   // a request that only rotates the App Password).
   const updates = {};
-  if (email !== undefined) updates.email = email || null;
+  if (email !== undefined) updates.email = email ? normalizeEmail(email) : null;
   if (typeof appPassword === 'string' && appPassword.trim()) {
     updates.email_app_password_enc = encrypt(appPassword.trim());
   } else if (appPassword === '') {

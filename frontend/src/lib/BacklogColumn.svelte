@@ -7,7 +7,7 @@
   // column looks identical no matter which subpage is active. data-date={UNSCHEDULED} is
   // what makes this a valid drag-drop target: dropping a scheduled post here clears its
   // date (see dragDrop.svelte.js).
-  let { tasks, searchFilter = {}, onEdit, onToggle } = $props();
+  let { tasks, searchFilter = {}, onEdit, onToggle, readOnly = false } = $props();
 
   function isDimmed(task) {
     return hasActiveFilters(searchFilter) && !taskMatchesFilters(task, searchFilter);
@@ -18,7 +18,7 @@
   <h3>Неразпределени</h3>
   <div class="backlog-list">
     {#each tasks as task (task.id)}
-      <PostTile {task} dimmed={isDimmed(task)} {onEdit} {onToggle} />
+      <PostTile {task} dimmed={isDimmed(task)} {onEdit} {onToggle} {readOnly} />
     {:else}
       <p class="empty-hint">Няма неразпределени постове</p>
     {/each}

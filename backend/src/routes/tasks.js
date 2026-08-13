@@ -29,6 +29,32 @@ function getEmailSender(userId) {
   return db.prepare('SELECT id, email, email_app_password_enc FROM users WHERE id = ?').get(userId);
 }
 
+// Resolves "whose calendar is this request actually looking at" — the caller's own
+// (the default, no ?calendar= at all) or someone else's, if that owner has granted the
+// caller's own email full view access via calendar_shares (see routes/sharing.js).
+// Returns null when ?calendar= doesn't resolve to anything the caller may see, so the
+// route can 403 instead of silently falling back to "my own calendar" — a typo'd or
+// revoked id should never quietly show the wrong (but real) data.
+function resolveViewedOwnerId(req) {
+  const { calendar } = req.query;
+  if (calendar === undefined) return req.user.id;
+
+  const ownerId = Number(calendar);
+  if (!Number.isInteger(ownerId)) return null;
+  if (ownerId === req.user.id) return ownerId; // viewing "someone else's" own id is just your own calendar
+
+  // requireAuth only verifies the JWT's signature, not that the user row still exists
+  // (e.g. a dev DB reset while an old token is still cached in a browser) — `me` can
+  // genuinely be undefined here.
+  const me = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
+  if (!me?.email) return null;
+
+  const share = db
+    .prepare('SELECT id FROM calendar_shares WHERE owner_id = ? AND shared_email = ?')
+    .get(ownerId, me.email);
+  return share ? ownerId : null;
+}
+
 function validateTaskInput(body, { partial = false } = {}) {
   const errors = [];
   const data = {};
@@ -173,7 +199,8 @@ function validateTaskInput(body, { partial = false } = {}) {
   return { errors, data };
 }
 
-// The user's own tasks + shared tasks from everyone else.
+// The user's own tasks + shared tasks from everyone else — or, with ?calendar=<ownerId>,
+// someone else's calendar entirely (see resolveViewedOwnerId).
 router.get('/', (req, res) => {
   const { date, from, to } = req.query;
 
@@ -183,17 +210,33 @@ router.get('/', (req, res) => {
     }
   }
 
+  const ownerId = resolveViewedOwnerId(req);
+  if (ownerId === null) {
+    return res.status(403).json({ error: 'Нямаш достъп до този календар.' });
+  }
+
   // @date/@from/@to are always present in the query (instead of being conditionally
   // spliced into the text), because node:sqlite throws if a named parameter is passed
   // that's missing from the SQL text. `date` is an exact match (day view); `from`/`to`
   // is an inclusive range (week/month views) — both can be combined, though in practice
   // the frontend only ever sends one or the other.
+  //
+  // The ownership condition covers two different sharing mechanisms depending on
+  // whether this is "my own calendar" or someone else's: viewing your own shows your
+  // tasks plus anyone's tasks.shared = 1 (visible instance-wide); viewing someone
+  // else's (via ?calendar=, already validated above) shows only THEIR tasks — not
+  // blended with your own or with unrelated third parties' shared = 1 tasks. Written as
+  // one SQL expression referencing both @ownerId and @userId (rather than branching the
+  // query text in JS) so both params are always bound, regardless of which side is true.
   const baseQuery = `
     SELECT id, user_id, title, notes, date, time, status, shared, color,
            client, post_type, priority, image_path, created_at, updated_at,
            ${REDACTED_EMAIL_COLUMNS}
     FROM tasks
-    WHERE (user_id = @userId OR shared = 1)
+    WHERE (
+        (@ownerId = @userId AND (user_id = @userId OR shared = 1))
+        OR (@ownerId != @userId AND user_id = @ownerId)
+      )
       AND (@date IS NULL OR date = @date)
       AND (@from IS NULL OR date >= @from)
       AND (@to IS NULL OR date <= @to)
@@ -202,6 +245,7 @@ router.get('/', (req, res) => {
 
   const rows = db.prepare(baseQuery).all({
     userId: req.user.id,
+    ownerId,
     date: date ?? null,
     from: from ?? null,
     to: to ?? null,
@@ -210,18 +254,28 @@ router.get('/', (req, res) => {
 });
 
 // Tasks with no date at all — the backlog column shown beside every view (day/week/
-// month), independent of whatever date range that view currently has loaded.
+// month), independent of whatever date range that view currently has loaded. Same
+// ?calendar=<ownerId> support and ownership condition as GET / above.
 router.get('/unscheduled', (req, res) => {
+  const ownerId = resolveViewedOwnerId(req);
+  if (ownerId === null) {
+    return res.status(403).json({ error: 'Нямаш достъп до този календар.' });
+  }
+
   const rows = db
     .prepare(
       `SELECT id, user_id, title, notes, date, time, status, shared, color,
               client, post_type, priority, image_path, reminder_sent, created_at, updated_at,
               ${REDACTED_EMAIL_COLUMNS}
        FROM tasks
-       WHERE (user_id = @userId OR shared = 1) AND date IS NULL
+       WHERE (
+           (@ownerId = @userId AND (user_id = @userId OR shared = 1))
+           OR (@ownerId != @userId AND user_id = @ownerId)
+         )
+         AND date IS NULL
        ORDER BY created_at DESC`
     )
-    .all({ userId: req.user.id });
+    .all({ userId: req.user.id, ownerId });
   res.json(rows);
 });
 

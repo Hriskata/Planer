@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('../db');
+const { normalizeEmail } = require('../validators');
 
 const router = express.Router();
 
@@ -85,10 +86,11 @@ router.post('/google', async (req, res) => {
     return res.status(401).json({ error: 'Google имейлът не е потвърден.' });
   }
 
+  const email = normalizeEmail(payload.email);
   let user = db.prepare('SELECT id, username FROM users WHERE google_id = ?').get(payload.sub);
 
   if (!user) {
-    if (!isAllowedNewSignup(payload.email)) {
+    if (!isAllowedNewSignup(email)) {
       return res.status(403).json({ error: 'Този имейл няма право да създава акаунт.' });
     }
 
@@ -103,8 +105,8 @@ router.post('/google', async (req, res) => {
           `INSERT INTO users (username, password_hash, google_id, email)
            VALUES (@username, @passwordHash, @googleId, @email)`
         )
-        .run({ username: payload.email, passwordHash: placeholderHash, googleId: payload.sub, email: payload.email });
-      user = { id: result.lastInsertRowid, username: payload.email };
+        .run({ username: email, passwordHash: placeholderHash, googleId: payload.sub, email });
+      user = { id: result.lastInsertRowid, username: email };
     } catch {
       // username (= email) collides with an existing password-only account.
       return res.status(409).json({ error: 'Вече има акаунт с този имейл — влез с потребител/парола.' });

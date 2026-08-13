@@ -51,3 +51,17 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   auth TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Read-only calendar sharing: the owner grants a specific email full view access to
+-- their own calendar (all of their tasks, not just shared=1 ones — a different, broader
+-- mechanism than tasks.shared, which is "visible to literally every user of this
+-- instance"). Matched against the invitee's own users.email at query time, not resolved
+-- to a user_id up front, so an invite still "takes" once that person later sets/changes
+-- their email in Settings.
+CREATE TABLE IF NOT EXISTS calendar_shares (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  shared_email TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(owner_id, shared_email)
+);

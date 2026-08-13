@@ -73,20 +73,40 @@ async function fetchTasksWithCache(cacheKey, path) {
   }
 }
 
-export function getTasks(date) {
-  return fetchTasksWithCache(CACHE_PREFIX + (date || 'all'), `/tasks${date ? `?date=${date}` : ''}`);
+// calendarOwnerId: viewing your own calendar (the default, undefined/null) vs. someone
+// else's shared with you (see CalendarSwitcher.svelte) — folded into both the request
+// query string and the cache key, so switching calendars can't show the wrong person's
+// cached tasks while offline.
+function calendarSuffix(calendarOwnerId) {
+  return calendarOwnerId ? `calendar=${calendarOwnerId}` : '';
+}
+
+export function getTasks(date, calendarOwnerId) {
+  const params = [date && `date=${date}`, calendarSuffix(calendarOwnerId)].filter(Boolean).join('&');
+  return fetchTasksWithCache(
+    CACHE_PREFIX + (date || 'all') + (calendarOwnerId ? `_cal${calendarOwnerId}` : ''),
+    `/tasks${params ? `?${params}` : ''}`
+  );
 }
 
 // Inclusive date range — used by the week and month views instead of one request per
 // visible day.
-export function getTasksRange(from, to) {
-  return fetchTasksWithCache(CACHE_PREFIX + `${from}_${to}`, `/tasks?from=${from}&to=${to}`);
+export function getTasksRange(from, to, calendarOwnerId) {
+  const params = [`from=${from}`, `to=${to}`, calendarSuffix(calendarOwnerId)].filter(Boolean).join('&');
+  return fetchTasksWithCache(
+    CACHE_PREFIX + `${from}_${to}` + (calendarOwnerId ? `_cal${calendarOwnerId}` : ''),
+    `/tasks?${params}`
+  );
 }
 
 // Tasks with no date — the backlog column shown beside every view, independent of
 // whatever date range is currently displayed.
-export function getUnscheduledTasks() {
-  return fetchTasksWithCache(CACHE_PREFIX + 'unscheduled', '/tasks/unscheduled');
+export function getUnscheduledTasks(calendarOwnerId) {
+  const params = calendarSuffix(calendarOwnerId);
+  return fetchTasksWithCache(
+    CACHE_PREFIX + 'unscheduled' + (calendarOwnerId ? `_cal${calendarOwnerId}` : ''),
+    `/tasks/unscheduled${params ? `?${params}` : ''}`
+  );
 }
 
 // Separate from request() on purpose: file uploads need multipart/form-data with a
@@ -135,6 +155,24 @@ export async function getEmailSenderSettings() {
 // appPassword omitted = leave the stored one untouched; '' = clear it.
 export function updateEmailSenderSettings({ email, appPassword }) {
   return request('/account/email-sender', { method: 'PUT', body: JSON.stringify({ email, appPassword }) });
+}
+
+// Calendars I've granted access to (for managing them in Settings).
+export function getMyShares() {
+  return request('/sharing/shares');
+}
+
+export function addCalendarShare(email) {
+  return request('/sharing/shares', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export function removeCalendarShare(id) {
+  return request(`/sharing/shares/${id}`, { method: 'DELETE' });
+}
+
+// Calendars shared WITH me — powers the calendar switcher in the header.
+export function getSharedWithMe() {
+  return request('/sharing/shared-with-me');
 }
 
 export function createTask(data) {

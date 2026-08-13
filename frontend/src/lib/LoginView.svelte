@@ -2,12 +2,19 @@
   import { onMount } from 'svelte';
   import { login, loginWithGoogle, getGoogleClientId } from './api.js';
 
+  let { onBack } = $props();
+
   let username = $state('');
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
   let googleReady = $state(false);
-  let googleButtonEl;
+  // $state, not a plain `let` — the $effect below reads it to decide when to render the
+  // Google button, and only re-runs on genuine reactive dependencies; without this the
+  // compiler warns (non_reactive_update) that it happens to work only because bind:this
+  // fires before effects flush in this specific case, not because Svelte is actually
+  // tracking the assignment.
+  let googleButtonEl = $state();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -74,6 +81,7 @@
 
 <div class="login-screen">
   <form onsubmit={handleSubmit}>
+    <button type="button" class="back-link" onclick={onBack}>← Начало</button>
     <h1>Планер</h1>
     <label>
       Потребител
@@ -120,6 +128,18 @@
   h1 {
     margin: 0 0 0.5rem;
     text-align: center;
+    color: var(--color-accent);
+  }
+  .back-link {
+    align-self: flex-start;
+    background: none;
+    padding: 0;
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: normal;
+    color: var(--color-text-faint);
+  }
+  .back-link:hover {
     color: var(--color-accent);
   }
   .divider {
