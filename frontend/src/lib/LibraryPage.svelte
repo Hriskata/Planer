@@ -8,7 +8,7 @@
     updateTask,
   } from './api.js';
   import { extractClients } from './search.js';
-  import { ASSET_TYPES, assetTypeIsText, assetTypeIsColor } from './libraryTypes.js';
+  import { ASSET_TYPES, assetTypeIsText, assetTypeIsColor, sortAssetTypeLabels } from './libraryTypes.js';
   import { todayStr, displayDate } from './date.js';
   import PostTile from './PostTile.svelte';
   import TaskForm from './TaskForm.svelte';
@@ -107,6 +107,14 @@
     assets.filter(
       (a) => (!selectedClient || a.client === selectedClient) && (!selectedType || a.type === selectedType)
     )
+  );
+
+  // Alphabetical, "Друго" last — Постове/Пост are mixed into their respective list
+  // before sorting so they land in their correct alphabetical slot instead of always
+  // trailing at the end (see sortAssetTypeLabels).
+  const tabTypes = $derived(sortAssetTypeLabels([...ASSET_TYPES, POSTS_TAB]));
+  const formTypeOptions = $derived(
+    sortAssetTypeLabels(tasksReadOnly ? ASSET_TYPES : [...ASSET_TYPES, POST_TYPE_OPTION])
   );
 
   // Mirrors the backend's exact permission check (routes/library.js) so the × button
@@ -297,10 +305,7 @@
   <div class="library-content">
     <div class="type-tabs">
       <button class:active={selectedType === ''} onclick={() => (selectedType = '')}>Всички</button>
-      <button class:active={selectedType === POSTS_TAB} onclick={() => (selectedType = POSTS_TAB)}>
-        {POSTS_TAB}
-      </button>
-      {#each ASSET_TYPES as t (t)}
+      {#each tabTypes as t (t)}
         <button class:active={selectedType === t} onclick={() => (selectedType = t)}>{t}</button>
       {/each}
     </div>
@@ -413,8 +418,7 @@
           <label>
             Тип
             <select bind:value={formType} onchange={handleFormTypeChange}>
-              {#each ASSET_TYPES as t (t)}<option value={t}>{t}</option>{/each}
-              {#if !tasksReadOnly}<option value={POST_TYPE_OPTION}>{POST_TYPE_OPTION}</option>{/if}
+              {#each formTypeOptions as t (t)}<option value={t}>{t}</option>{/each}
             </select>
           </label>
           <label>
@@ -484,6 +488,16 @@
     border: 1px solid var(--color-border);
     border-radius: 10px;
     padding: 0.5rem;
+    /* A fixed height (not max-height) so the border always reaches down toward the
+       bottom of the viewport with breathing room, regardless of how few clients exist
+       — not just capped once there happen to be enough to overflow it. Once the client
+       list IS taller than that, it scrolls inside its own border rather than growing
+       the box (or the page) further. Sticky (not fixed) so it still scrolls away
+       naturally with the header above it. */
+    position: sticky;
+    top: 1rem;
+    height: calc(100vh - 2rem);
+    overflow-y: auto;
   }
   .client-item {
     background: none;
@@ -784,6 +798,11 @@
       width: 100%;
       flex-direction: row;
       flex-wrap: wrap;
+      /* The desktop column's sticky/fixed-height box doesn't suit a wrapping chip row —
+         it just grows with its (wrapped) content here instead. */
+      position: static;
+      height: auto;
+      overflow-y: visible;
     }
   }
 </style>

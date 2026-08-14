@@ -12,3 +12,12 @@ export function assetTypeIsText(type) {
 export function assetTypeIsColor(type) {
   return type === 'Цвят';
 }
+
+// Alphabetical (Bulgarian collation), except 'Друго' always sorts last regardless —
+// used for both the type-tabs row and the upload form's Тип dropdown, each of which
+// mixes its own pseudo-type (Постове/Пост) into the list before calling this, so this
+// stays a generic label sorter rather than something tied to ASSET_TYPES specifically.
+export function sortAssetTypeLabels(labels) {
+  const withoutOther = labels.filter((l) => l !== 'Друго').sort((a, b) => a.localeCompare(b, 'bg'));
+  return labels.includes('Друго') ? [...withoutOther, 'Друго'] : withoutOther;
+}
