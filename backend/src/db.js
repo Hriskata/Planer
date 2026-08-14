@@ -58,6 +58,18 @@ for (const [column, type] of [
 // can coexist without tripping the uniqueness check.
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL');
 
+// library_assets already existed before the 'Цвят' type — hex_code/rgb_value are new
+// columns on that existing table, same ADD COLUMN dance as everything above.
+const libraryAssetColumns = db.prepare("PRAGMA table_info(library_assets)").all().map((c) => c.name);
+for (const [column, type] of [
+  ['hex_code', 'TEXT'],
+  ['rgb_value', 'TEXT'],
+]) {
+  if (!libraryAssetColumns.includes(column)) {
+    db.exec(`ALTER TABLE library_assets ADD COLUMN ${column} ${type}`);
+  }
+}
+
 // SQLite can't directly relax a NOT NULL constraint on an existing column — the only
 // way is to rebuild the table. Needed so existing databases (from before "unscheduled"
 // backlog tasks existed) allow date to be NULL too, not just brand-new ones. Uses an

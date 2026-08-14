@@ -109,6 +109,26 @@ export function getUnscheduledTasks(calendarOwnerId) {
   );
 }
 
+// Every task (scheduled or not) for one client, regardless of date — powers the
+// "Постове" tab in LibraryPage. client='' (the "Всички клиенти" sidebar selection)
+// omits the filter entirely, returning every task for the calendar instead. Not
+// offline-cached like the calendar views above; it's a secondary lookup, same
+// reasoning as the library asset functions below.
+export function getTasksByClient(client, calendarOwnerId) {
+  const params = [client && `client=${encodeURIComponent(client)}`, calendarSuffix(calendarOwnerId)]
+    .filter(Boolean)
+    .join('&');
+  return request(`/tasks${params ? `?${params}` : ''}`);
+}
+
+// Distinct clients pulled from tasks, not library_assets — merged with the library's
+// own client list in LibraryPage so a client only ever mentioned in the calendar still
+// shows up in the library sidebar.
+export function getTaskClients(calendarOwnerId) {
+  const params = calendarSuffix(calendarOwnerId);
+  return request(`/tasks/clients${params ? `?${params}` : ''}`);
+}
+
 // Separate from request() on purpose: file uploads need multipart/form-data with a
 // browser-generated boundary, which only happens if we DON'T set Content-Type
 // ourselves (request() always sends application/json). Returns { path }.
@@ -184,14 +204,17 @@ export function getLibraryAssets(calendarOwnerId) {
 
 // Same multipart reasoning as uploadImage() — Content-Type must be left for the browser
 // to set (with its boundary), not forced to application/json like request() does.
-// `file` is optional (text-only assets have none); everything else is a plain string.
-export async function uploadLibraryAsset({ client, type, title, file, textContent }, calendarOwnerId) {
+// `file` is optional (text/color-only assets may have none); everything else is a
+// plain string. hexCode/rgbValue are 'Цвят'-only, blank for every other type.
+export async function uploadLibraryAsset({ client, type, title, file, textContent, hexCode, rgbValue }, calendarOwnerId) {
   const current = get(auth);
   const formData = new FormData();
   formData.append('client', client);
   formData.append('type', type);
   formData.append('title', title);
   if (textContent) formData.append('text_content', textContent);
+  if (hexCode) formData.append('hex_code', hexCode);
+  if (rgbValue) formData.append('rgb_value', rgbValue);
   if (file) formData.append('file', file);
 
   const headers = {};

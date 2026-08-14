@@ -30,6 +30,10 @@ const ALLOWED_TYPES = {
 };
 const MAX_SIZE = 15 * 1024 * 1024; // 15MB — fonts/PDFs run larger than task photos
 
+// Loose on purpose — 3 or 6 hex digits, '#' optional (normalized to always include it
+// below), same minimal-validation spirit as the rest of this app's free-text fields.
+const HEX_RE = /^#?[0-9a-fA-F]{3}$|^#?[0-9a-fA-F]{6}$/;
+
 const storage = multer.diskStorage({
   destination: UPLOADS_DIR,
   filename: (req, file, cb) => {
@@ -60,7 +64,8 @@ router.get('/', (req, res) => {
   const rows = db
     .prepare(
       `SELECT la.id, la.owner_id, la.uploaded_by, la.client, la.type, la.title,
-              la.file_path, la.text_content, la.created_at, la.updated_at,
+              la.file_path, la.text_content, la.hex_code, la.rgb_value,
+              la.created_at, la.updated_at,
               u.username AS uploaded_by_username
        FROM library_assets la
        JOIN users u ON u.id = la.uploaded_by
@@ -79,21 +84,49 @@ router.post('/', upload.single('file'), (req, res) => {
 
   const { client, type, title } = req.body || {};
   const textContent = typeof req.body?.text_content === 'string' ? req.body.text_content.trim() : '';
+  const hexInput = typeof req.body?.hex_code === 'string' ? req.body.hex_code.trim() : '';
+  const rgbInput = typeof req.body?.rgb_value === 'string' ? req.body.rgb_value.trim() : '';
   const filePath = req.file ? `/uploads/${req.file.filename}` : null;
 
   const errors = [];
   if (typeof client !== 'string' || !client.trim()) errors.push('client е задължителен.');
   if (typeof type !== 'string' || !type.trim()) errors.push('type е задължителен.');
   if (typeof title !== 'string' || !title.trim()) errors.push('title е задължителен.');
-  if (!filePath && !textContent) errors.push('Трябва да качиш файл или да въведеш текст.');
+
+  let hexCode = null;
+  if (hexInput) {
+    if (!HEX_RE.test(hexInput)) {
+      errors.push('hex_code трябва да е валиден HEX код (напр. #3B82F6).');
+    } else {
+      hexCode = hexInput.startsWith('#') ? hexInput : `#${hexInput}`;
+    }
+  }
+
+  let rgbValue = null;
+  if (rgbInput) {
+    const parts = rgbInput.split(',').map((p) => p.trim());
+    const nums = parts.map(Number);
+    if (parts.length !== 3 || nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      errors.push('rgb_value трябва да е във формат "R, G, B" (0-255 всяко).');
+    } else {
+      rgbValue = nums.join(', ');
+    }
+  }
+
+  // Only 'Цвят' assets can rely on hex/rgb alone — everything else still needs a file
+  // or text, exactly as before; hex/rgb simply widen what counts as "something was
+  // provided" rather than replacing the rule.
+  if (!filePath && !textContent && !hexCode && !rgbValue) {
+    errors.push('Трябва да качиш файл, да въведеш текст, или да зададеш HEX/RGB.');
+  }
   if (errors.length > 0) {
     return res.status(400).json({ errors });
   }
 
   const result = db
     .prepare(
-      `INSERT INTO library_assets (owner_id, uploaded_by, client, type, title, file_path, text_content)
-       VALUES (@ownerId, @uploadedBy, @client, @type, @title, @filePath, @textContent)`
+      `INSERT INTO library_assets (owner_id, uploaded_by, client, type, title, file_path, text_content, hex_code, rgb_value)
+       VALUES (@ownerId, @uploadedBy, @client, @type, @title, @filePath, @textContent, @hexCode, @rgbValue)`
     )
     .run({
       ownerId,
@@ -103,6 +136,8 @@ router.post('/', upload.single('file'), (req, res) => {
       title: title.trim(),
       filePath,
       textContent: textContent || null,
+      hexCode,
+      rgbValue,
     });
 
   const created = db

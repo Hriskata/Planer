@@ -1,7 +1,17 @@
 <script>
-  import { getLibraryAssets, uploadLibraryAsset, deleteLibraryAsset } from './api.js';
+  import {
+    getLibraryAssets,
+    uploadLibraryAsset,
+    deleteLibraryAsset,
+    getTaskClients,
+    getTasksByClient,
+    updateTask,
+  } from './api.js';
   import { extractClients } from './search.js';
-  import { ASSET_TYPES, assetTypeIsText } from './libraryTypes.js';
+  import { ASSET_TYPES, assetTypeIsText, assetTypeIsColor } from './libraryTypes.js';
+  import { todayStr, displayDate } from './date.js';
+  import PostTile from './PostTile.svelte';
+  import TaskForm from './TaskForm.svelte';
 
   // activeCalendarOwnerId: null = your own library; otherwise the owner id of a
   // calendar shared with you (see CalendarSwitcher.svelte in MainView's header, which
@@ -9,12 +19,27 @@
   // looking at" switch as the task views, per how this feature was scoped.
   let { activeCalendarOwnerId, myUserId } = $props();
 
+  // A pseudo type, not a real library_assets.type — selecting it swaps the whole
+  // content pane to that client's tasks instead of library materials (see below).
+  const POSTS_TAB = 'Постове';
+
+  // Task sharing stays strictly read-only (see calendarAccess.js / CLAUDE.md) even
+  // though library material sharing is more permissive (upload allowed) — this tab pulls
+  // in real `tasks` rows, so it must follow tasks' own, stricter rule, not the library's.
+  const tasksReadOnly = $derived(activeCalendarOwnerId !== null);
+
   let assets = $state([]);
   let loading = $state(false);
   let error = $state('');
   let selectedClient = $state(''); // '' = "Всички клиенти"
   let selectedType = $state(''); // '' = "Всички"
   let showUploadForm = $state(false);
+  let taskClients = $state([]);
+  let posts = $state([]);
+  let postsLoading = $state(false);
+  let showTaskForm = $state(false);
+  let editingPost = $state(null);
+  let duplicatePostFrom = $state(null);
 
   async function load() {
     loading = true;
@@ -28,12 +53,50 @@
     }
   }
 
+  // Non-critical if this fails (network hiccup, etc.) — the sidebar just falls back to
+  // showing only clients that already have library material, same as before this tab existed.
+  async function loadTaskClients() {
+    try {
+      taskClients = await getTaskClients(activeCalendarOwnerId);
+    } catch {
+      // ignored — see comment above
+    }
+  }
+
   $effect(() => {
     activeCalendarOwnerId;
     load();
+    loadTaskClients();
   });
 
-  const clients = $derived(extractClients(assets));
+  async function loadPosts() {
+    postsLoading = true;
+    error = '';
+    try {
+      posts = await getTasksByClient(selectedClient, activeCalendarOwnerId);
+    } catch (err) {
+      error = err.message;
+    } finally {
+      postsLoading = false;
+    }
+  }
+
+  // Only fetches while the Постове tab is actually selected — switching to it re-runs
+  // this (selectedType becomes a tracked dependency), and while on it, changing client
+  // or calendar re-fetches too.
+  $effect(() => {
+    if (selectedType !== POSTS_TAB) return;
+    selectedClient;
+    activeCalendarOwnerId;
+    loadPosts();
+  });
+
+  // Clients come from two places now — library material and the calendar's own tasks —
+  // so a client who only has scheduled posts and no uploaded material yet still shows
+  // up here instead of only being reachable by typing their name from scratch.
+  const clients = $derived(
+    [...new Set([...extractClients(assets), ...taskClients])].sort((a, b) => a.localeCompare(b, 'bg'))
+  );
   const filteredAssets = $derived(
     assets.filter(
       (a) => (!selectedClient || a.client === selectedClient) && (!selectedType || a.type === selectedType)
@@ -65,6 +128,45 @@
     load();
   }
 
+  function handleFabClick() {
+    if (selectedType === POSTS_TAB) {
+      if (tasksReadOnly) return; // FAB is hidden in this case anyway; belt-and-suspenders
+      editingPost = null;
+      duplicatePostFrom = selectedClient ? { client: selectedClient } : null;
+      showTaskForm = true;
+    } else {
+      openUploadForm();
+    }
+  }
+
+  function openEditPost(post) {
+    editingPost = post;
+    duplicatePostFrom = null;
+    showTaskForm = true;
+  }
+
+  function handleDuplicatePost(post) {
+    editingPost = null;
+    duplicatePostFrom = post;
+    showTaskForm = true;
+  }
+
+  function handlePostSaved() {
+    showTaskForm = false;
+    loadPosts();
+  }
+
+  async function handleTogglePost(post) {
+    if (tasksReadOnly) return;
+    const next = post.status === 'done' ? 'pending' : 'done';
+    try {
+      await updateTask(post.id, { status: next });
+      await loadPosts();
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
   const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
   function isImageAsset(asset) {
     if (!asset.file_path) return false;
@@ -74,12 +176,21 @@
   function fileName(asset) {
     return asset.file_path ? asset.file_path.split('/').pop() : '';
   }
+  // Prefers hex over rgb for the swatch background — both may be set on the same
+  // asset (two notations for the same color), hex is just the more direct CSS value.
+  function swatchColor(asset) {
+    if (asset.hex_code) return asset.hex_code;
+    if (asset.rgb_value) return `rgb(${asset.rgb_value})`;
+    return null;
+  }
 
   // --- Upload form state ---
   let formClient = $state('');
   let formType = $state(ASSET_TYPES[0]);
   let formTitle = $state('');
   let formTextContent = $state('');
+  let formHexCode = $state('');
+  let formRgbValue = $state('');
   let formFile = $state(null);
   let formSaving = $state(false);
   let formError = $state('');
@@ -89,6 +200,8 @@
     formType = ASSET_TYPES[0];
     formTitle = '';
     formTextContent = '';
+    formHexCode = '';
+    formRgbValue = '';
     formFile = null;
     formError = '';
     showUploadForm = true;
@@ -109,7 +222,11 @@
       formError = 'Въведи текстовото съдържание.';
       return;
     }
-    if (!assetTypeIsText(formType) && !formFile) {
+    if (assetTypeIsColor(formType) && !formHexCode.trim() && !formRgbValue.trim() && !formFile) {
+      formError = 'Въведи HEX, RGB, или качи снимка — поне едно от трите.';
+      return;
+    }
+    if (!assetTypeIsText(formType) && !assetTypeIsColor(formType) && !formFile) {
       formError = 'Избери файл за качване.';
       return;
     }
@@ -122,6 +239,8 @@
           title: formTitle.trim(),
           file: assetTypeIsText(formType) ? null : formFile,
           textContent: assetTypeIsText(formType) ? formTextContent.trim() : null,
+          hexCode: assetTypeIsColor(formType) ? formHexCode.trim() : null,
+          rgbValue: assetTypeIsColor(formType) ? formRgbValue.trim() : null,
         },
         activeCalendarOwnerId
       );
@@ -152,6 +271,9 @@
   <div class="library-content">
     <div class="type-tabs">
       <button class:active={selectedType === ''} onclick={() => (selectedType = '')}>Всички</button>
+      <button class:active={selectedType === POSTS_TAB} onclick={() => (selectedType = POSTS_TAB)}>
+        {POSTS_TAB}
+      </button>
       {#each ASSET_TYPES as t (t)}
         <button class:active={selectedType === t} onclick={() => (selectedType = t)}>{t}</button>
       {/each}
@@ -159,7 +281,24 @@
 
     {#if error}<p class="error">{error}</p>{/if}
 
-    {#if loading}
+    {#if selectedType === POSTS_TAB}
+      {#if postsLoading}
+        <p class="empty">Зареждане...</p>
+      {:else if posts.length === 0}
+        <p class="empty">Няма постове{selectedClient ? ` за ${selectedClient}` : ''}.</p>
+      {:else}
+        <div class="post-grid">
+          {#each posts as post (post.id)}
+            <div class="post-cell">
+              <span class="post-date">
+                {post.date ? displayDate(post.date) : 'Без дата'}{post.time ? ` · ${post.time}` : ''}
+              </span>
+              <PostTile task={post} onEdit={openEditPost} onToggle={handleTogglePost} readOnly={tasksReadOnly} />
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {:else if loading}
       <p class="empty">Зареждане...</p>
     {:else if filteredAssets.length === 0}
       <p class="empty">
@@ -173,7 +312,20 @@
               <button class="asset-delete" onclick={() => handleDelete(asset)} aria-label="Изтрий материала">×</button>
             {/if}
             <div class="asset-preview">
-              {#if isImageAsset(asset)}
+              {#if assetTypeIsColor(asset.type)}
+                <div class="color-preview">
+                  {#if swatchColor(asset)}
+                    <div class="color-swatch" style={`background: ${swatchColor(asset)};`}></div>
+                  {:else if isImageAsset(asset)}
+                    <img src={asset.file_path} alt={asset.title} loading="lazy" />
+                  {/if}
+                  {#if asset.hex_code}<span class="color-value">{asset.hex_code}</span>{/if}
+                  {#if asset.rgb_value}<span class="color-value">rgb({asset.rgb_value})</span>{/if}
+                  {#if swatchColor(asset) && asset.file_path}
+                    <a class="color-photo-link" href={asset.file_path} download>снимка</a>
+                  {/if}
+                </div>
+              {:else if isImageAsset(asset)}
                 <img src={asset.file_path} alt={asset.title} loading="lazy" />
               {:else if assetTypeIsText(asset.type)}
                 <p class="asset-text">{asset.text_content}</p>
@@ -195,7 +347,29 @@
     {/if}
   </div>
 
-  <button class="fab" onclick={openUploadForm} aria-label="Добави материал">+</button>
+  {#if selectedType !== POSTS_TAB || !tasksReadOnly}
+    <button
+      class="fab"
+      onclick={handleFabClick}
+      aria-label={selectedType === POSTS_TAB ? 'Нов пост' : 'Добави материал'}
+    >
+      +
+    </button>
+  {/if}
+
+  {#if showTaskForm}
+    {#key editingPost?.id ?? (duplicatePostFrom?.id ? `dup-${duplicatePostFrom.id}` : `new-${duplicatePostFrom?.client ?? ''}`)}
+      <TaskForm
+        task={editingPost}
+        duplicateFrom={duplicatePostFrom}
+        defaultDate={todayStr()}
+        onSaved={handlePostSaved}
+        onCancel={() => (showTaskForm = false)}
+        onDuplicate={handleDuplicatePost}
+        readOnly={tasksReadOnly}
+      />
+    {/key}
+  {/if}
 
   {#if showUploadForm}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -224,6 +398,20 @@
             <label>
               Текст
               <textarea bind:value={formTextContent} rows="5"></textarea>
+            </label>
+          {:else if assetTypeIsColor(formType)}
+            <p class="field-hint">Попълни поне едно от трите — HEX, RGB, или снимка.</p>
+            <label>
+              HEX
+              <input type="text" bind:value={formHexCode} placeholder="#3B82F6" />
+            </label>
+            <label>
+              RGB
+              <input type="text" bind:value={formRgbValue} placeholder="59, 130, 246" />
+            </label>
+            <label>
+              Снимка (по избор)
+              <input type="file" onchange={handleFileSelect} accept="image/*" />
             </label>
           {:else}
             <label>
@@ -319,10 +507,20 @@
     color: white;
     font-weight: 600;
   }
-  .asset-grid {
+  .asset-grid,
+  .post-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 1rem;
+  }
+  .post-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .post-date {
+    font-size: 0.75rem;
+    color: var(--color-text-faint);
   }
   .asset-card {
     position: relative;
@@ -373,6 +571,41 @@
     overflow: auto;
     max-height: 100%;
     white-space: pre-wrap;
+  }
+  .color-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    width: 100%;
+    height: 100%;
+    padding: 0.75rem;
+  }
+  .color-swatch {
+    width: 70%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+  .color-value {
+    font-size: 0.75rem;
+    font-family: monospace;
+    color: var(--color-text-muted);
+  }
+  .color-photo-link {
+    font-size: 0.7rem;
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .color-photo-link:hover {
+    text-decoration: underline;
+  }
+  .field-hint {
+    font-size: 0.8rem;
+    color: var(--color-text-faint);
+    margin: -0.25rem 0 0;
   }
   .asset-file {
     color: var(--color-accent);

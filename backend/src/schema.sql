@@ -80,10 +80,12 @@ CREATE TABLE IF NOT EXISTS library_assets (
   owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   uploaded_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   client TEXT NOT NULL,
-  type TEXT NOT NULL,                       -- 'Лого' | 'Шрифт' | 'Снимка' | 'Текст' | 'Друго'
+  type TEXT NOT NULL,                       -- 'Лого' | 'Шрифт' | 'Снимка' | 'Текст' | 'Цвят' | 'Друго'
   title TEXT NOT NULL,
-  file_path TEXT,                           -- e.g. '/uploads/<uuid>.png', NULL for text-only assets
-  text_content TEXT,                        -- NULL for file-based assets — exactly one of the two is set
+  file_path TEXT,                           -- e.g. '/uploads/<uuid>.png', NULL for text/color-only assets
+  text_content TEXT,                        -- 'Текст' assets only
+  hex_code TEXT,                            -- 'Цвят' assets only, e.g. '#3B82F6'
+  rgb_value TEXT,                           -- 'Цвят' assets only, e.g. '59, 130, 246'
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

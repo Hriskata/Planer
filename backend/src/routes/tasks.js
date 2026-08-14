@@ -179,7 +179,7 @@ function validateTaskInput(body, { partial = false } = {}) {
 // The user's own tasks + shared tasks from everyone else — or, with ?calendar=<ownerId>,
 // someone else's calendar entirely (see resolveViewedOwnerId).
 router.get('/', (req, res) => {
-  const { date, from, to } = req.query;
+  const { date, from, to, client } = req.query;
 
   for (const [name, value] of [['date', date], ['from', from], ['to', to]]) {
     if (value !== undefined && !DATE_RE.test(value)) {
@@ -192,11 +192,14 @@ router.get('/', (req, res) => {
     return res.status(403).json({ error: 'Нямаш достъп до този календар.' });
   }
 
-  // @date/@from/@to are always present in the query (instead of being conditionally
-  // spliced into the text), because node:sqlite throws if a named parameter is passed
-  // that's missing from the SQL text. `date` is an exact match (day view); `from`/`to`
-  // is an inclusive range (week/month views) — both can be combined, though in practice
-  // the frontend only ever sends one or the other.
+  // @date/@from/@to/@client are always present in the query (instead of being
+  // conditionally spliced into the text), because node:sqlite throws if a named
+  // parameter is passed that's missing from the SQL text. `date` is an exact match (day
+  // view); `from`/`to` is an inclusive range (week/month views) — both can be combined,
+  // though in practice the frontend only ever sends one or the other. `client` with none
+  // of the three date params is how LibraryPage's "Постове" tab asks for "every task
+  // (scheduled or not) for this one client" — see the ORDER BY note below for why that
+  // combination needed its own handling.
   //
   // The ownership condition covers two different sharing mechanisms depending on
   // whether this is "my own calendar" or someone else's: viewing your own shows your
@@ -217,7 +220,8 @@ router.get('/', (req, res) => {
       AND (@date IS NULL OR date = @date)
       AND (@from IS NULL OR date >= @from)
       AND (@to IS NULL OR date <= @to)
-    ORDER BY date ASC, time IS NULL, time ASC
+      AND (@client IS NULL OR client = @client)
+    ORDER BY date IS NULL, date ASC, time IS NULL, time ASC
   `;
 
   const rows = db.prepare(baseQuery).all({
@@ -226,8 +230,32 @@ router.get('/', (req, res) => {
     date: date ?? null,
     from: from ?? null,
     to: to ?? null,
+    client: client ?? null,
   });
   res.json(rows);
+});
+
+// Distinct clients across this owner's tasks (same visibility rule as GET / above) —
+// powers LibraryPage's client sidebar, so a client that only has scheduled posts and no
+// library material yet still shows up there instead of only being reachable by typing
+// their name from scratch in the upload form.
+router.get('/clients', (req, res) => {
+  const ownerId = resolveViewedOwnerId(req);
+  if (ownerId === null) {
+    return res.status(403).json({ error: 'Нямаш достъп до този календар.' });
+  }
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT client FROM tasks
+       WHERE (
+           (@ownerId = @userId AND (user_id = @userId OR shared = 1))
+           OR (@ownerId != @userId AND user_id = @ownerId)
+         )
+         AND client IS NOT NULL AND client != ''
+       ORDER BY client COLLATE NOCASE`
+    )
+    .all({ userId: req.user.id, ownerId });
+  res.json(rows.map((r) => r.client));
 });
 
 // Tasks with no date at all — the backlog column shown beside every view (day/week/
