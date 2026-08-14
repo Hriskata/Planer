@@ -139,6 +139,16 @@
     border-radius: 10px;
     overflow: hidden;
     background: var(--color-surface);
+    /* .calendar-area (a flex column, added for WeekCalendar's stretch-to-bottom fix)
+       wraps this too now, even though month view doesn't participate in that stretch
+       model — without flex-shrink: 0, the default flex-shrink: 1 combined with
+       overflow: hidden here (which resolves the automatic min-height to 0 instead of
+       the content's real height, a flexbox-specific rule) let the flex layout squeeze
+       this box shorter than its own 6-row content and silently clip the bottom rows
+       instead of showing them or scrolling to them. This restores the pre-.app-shell
+       behavior: always render at full content height, and let .app-shell's own
+       overflow-y: auto scroll to the rest on short screens instead of cutting it off. */
+    flex-shrink: 0;
   }
   .weekday-header,
   .month-grid {

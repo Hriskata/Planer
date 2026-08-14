@@ -90,11 +90,18 @@
   .scroll-x {
     /* Both axes: horizontal for narrow phone screens (header/posts scroll together,
        see below), vertical so the box actually fills .calendar's stretched height and
-       scrolls its own content instead of growing past it. */
+       scrolls its own content instead of growing past it. flex column (not just a plain
+       overflow box) so .grid below can claim the leftover height with flex:1 — without
+       this, .grid stayed at its own content height and the day-column border-left lines
+       stopped short of the bottom instead of reaching it, leaving a visually broken gap
+       under short weeks (few/no posts) even though .calendar's outer border already
+       stretched to the bottom. */
     overflow-x: auto;
     overflow-y: auto;
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   .header-row,
   .grid {
@@ -108,6 +115,16 @@
   }
   .header-row {
     border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+  .grid {
+    /* Fills whatever height .header-row didn't use; the grid's single auto row track
+       then stretches to that height by default (align-content: normal → stretch), which
+       in turn stretches each .day-column (default align-items: stretch) so its
+       border-left keeps going all the way to the bottom instead of stopping at its own
+       content. */
+    flex: 1;
+    min-height: 0;
   }
   .day-header {
     text-align: center;
