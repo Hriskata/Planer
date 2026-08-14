@@ -207,6 +207,12 @@
   onpointercancel={handlePointerCancel}
 />
 
+<!-- Bounds header + page body to the viewport height so the page itself never scrolls —
+     only whichever inner region actually needs to (LibraryPage's own sidebar/content,
+     or <main> below for the calendar view) does. min-height (not height) so the
+     calendar view can still grow taller and let the page scroll under the now-sticky
+     header when its content genuinely doesn't fit, exactly as it always has. -->
+<div class="app-shell">
 <header>
   <div class="nav-left">
     <button class="brand" onclick={() => (page = 'calendar')}>Планер</button>
@@ -384,6 +390,7 @@
   <button class="fab" onclick={openNewTaskForm} aria-label="Нова задача">+</button>
 {/if}
 {/if}
+</div>
 
 {#if showForm}
   <!-- Keyed so switching from "edit task A" to "duplicate of task A" (which keeps
@@ -405,6 +412,20 @@
 {/if}
 
 <style>
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    /* A definite height (not min-height) — flex-grow distribution to .library below
+       needs the container's own size to be definite, not just floored, or nested flex
+       children fall back to their content's full size instead of the remaining space.
+       .app-shell becomes the scrolling container itself (not body): the calendar view's
+       <main> has no overflow handling of its own, so if its content doesn't fit, THIS
+       box scrolls under the sticky header, same net effect as the page scrolling used
+       to have — LibraryPage's own regions handle their own internal scroll instead. */
+    height: 100vh;
+    height: 100dvh; /* falls back to 100vh above on browsers without dvh support */
+    overflow-y: auto;
+  }
   header {
     display: flex;
     justify-content: space-between;
@@ -415,6 +436,13 @@
     padding-top: calc(1rem + env(safe-area-inset-top, 0px));
     background: var(--color-accent);
     color: white;
+    /* Requested explicitly — stays pinned at the very top through any scrolling,
+       whether that's the calendar view's whole-page scroll or (now bounded away
+       entirely, see .app-shell) the library's internal one. */
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0;
   }
   .nav-left {
     display: flex;

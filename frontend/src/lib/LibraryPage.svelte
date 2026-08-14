@@ -473,7 +473,10 @@
   .library {
     display: flex;
     gap: 1.25rem;
-    align-items: flex-start;
+    /* Default (stretch), not flex-start — .library itself is now a properly
+       height-bounded flex:1 region (see MainView's .app-shell), so both the sidebar
+       and the content column can stretch to match its real available height instead
+       of each shrink-wrapping to their own content. */
     padding: 1rem;
     flex: 1;
     min-height: 0;
@@ -488,15 +491,14 @@
     border: 1px solid var(--color-border);
     border-radius: 10px;
     padding: 0.5rem;
-    /* A fixed height (not max-height) so the border always reaches down toward the
-       bottom of the viewport with breathing room, regardless of how few clients exist
-       — not just capped once there happen to be enough to overflow it. Once the client
-       list IS taller than that, it scrolls inside its own border rather than growing
-       the box (or the page) further. Sticky (not fixed) so it still scrolls away
-       naturally with the header above it. */
-    position: sticky;
-    top: 1rem;
-    height: calc(100vh - 2rem);
+    /* Stretched (see .library above) to reach the bottom of the available space with
+       matching breathing room, regardless of how few clients exist — not just capped
+       once there happen to be enough to overflow it. Scrolls internally rather than
+       growing the box (or the page) further once the client list doesn't fit.
+       min-height: 0 overrides the flex default (min-height: auto), which otherwise
+       forces this box to its content's full height regardless of stretch — the classic
+       nested-flexbox gotcha, needed at every level in this chain, not just on .library. */
+    min-height: 0;
     overflow-y: auto;
   }
   .client-item {
@@ -526,6 +528,8 @@
   .library-content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
   }
   .type-tabs {
     display: flex;
@@ -798,10 +802,9 @@
       width: 100%;
       flex-direction: row;
       flex-wrap: wrap;
-      /* The desktop column's sticky/fixed-height box doesn't suit a wrapping chip row —
-         it just grows with its (wrapped) content here instead. */
-      position: static;
-      height: auto;
+      /* The desktop column's stretch-to-fill sizing doesn't suit a wrapping chip row —
+         it just grows with its (wrapped) content here instead (overflow-y: auto from
+         the base rule is a no-op without an explicit height to overflow). */
       overflow-y: visible;
     }
   }
