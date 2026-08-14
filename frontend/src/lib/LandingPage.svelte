@@ -1,5 +1,6 @@
 <script>
   import Icon from './Icon.svelte';
+  import { theme, toggleTheme } from './theme.js';
 
   let { onEnter } = $props();
 </script>
@@ -7,7 +8,17 @@
 <div class="landing">
   <header class="topbar">
     <span class="wordmark">Планер</span>
-    <button class="cta-small" onclick={onEnter}>Вход</button>
+    <div class="topbar-actions">
+      <button
+        class="theme-toggle"
+        onclick={toggleTheme}
+        aria-label={$theme === 'dark' ? 'Светла тема' : 'Тъмна тема'}
+        title={$theme === 'dark' ? 'Светла тема' : 'Тъмна тема'}
+      >
+        <Icon name={$theme === 'dark' ? 'sun' : 'moon'} size="1.05rem" />
+      </button>
+      <button class="cta-small" onclick={onEnter}>Вход</button>
+    </div>
   </header>
 
   <section class="hero">
@@ -92,6 +103,30 @@
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.01em;
+    color: var(--color-accent);
+  }
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .theme-toggle {
+    color: var(--color-text-muted);
+    background: none;
+    border: 1.5px solid var(--color-border);
+    border-radius: 999px;
+    width: 2.1rem;
+    height: 2.1rem;
+    line-height: 1;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .theme-toggle:hover {
+    background: var(--color-accent-tint);
     color: var(--color-accent);
   }
   .cta-small {

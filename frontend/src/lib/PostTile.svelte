@@ -16,7 +16,11 @@
   function tileColorStyle() {
     if (task.status === 'done') return '';
     const c = colorForPostType(task.post_type);
-    return `background: ${c.bg}; color: ${c.fg};`;
+    // The priority left-edge stripe rides along on the same inline style (not a
+    // separate element) so it shares the done-task exemption above for free — an
+    // already-completed task shouldn't still shout "urgent" at you.
+    const priorityStripe = task.priority ? `border-left: 4px solid ${colorForPriority(task.priority)};` : '';
+    return `background: ${c.bg}; color: ${c.fg}; ${priorityStripe}`;
   }
 
   // "Client - post type" is the primary label per the content-planning layout; falls
@@ -56,10 +60,10 @@
 >
   <div class="post-header">
     {#if task.priority}
-      <span class="priority-badge" title={`Приоритет ${task.priority}`}>
-        <span class="priority-dot" style={`background: ${colorForPriority(task.priority)}`}></span>
-        P{task.priority}
-      </span>
+      <!-- Text stays the tile's own foreground color, not colorForPriority(task) — the
+           left-edge stripe above already carries the color signal; recoloring the text
+           too would fight the post-type background instead of just accenting it. -->
+      <span class="priority-badge" title={`Приоритет ${task.priority}`}>P{task.priority}</span>
     {/if}
     <span class="post-label">{postLabel()}</span>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -128,19 +132,10 @@
     min-width: 0;
   }
   .priority-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
     font-size: 0.65rem;
     font-weight: 700;
     flex-shrink: 0;
     opacity: 0.85;
-  }
-  .priority-dot {
-    width: 0.4rem;
-    height: 0.4rem;
-    border-radius: 50%;
-    flex-shrink: 0;
   }
   .post-done {
     display: flex;
