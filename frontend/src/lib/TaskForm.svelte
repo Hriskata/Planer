@@ -1,8 +1,9 @@
 <script>
   import { untrack } from 'svelte';
-  import { createTask, updateTask, deleteTask, uploadImage } from './api.js';
+  import { createTask, updateTask, deleteTask, uploadImage, getEmailSenderSettings } from './api.js';
   import { POST_TYPES } from './postTypes.js';
   import { PRIORITIES, priorityLabel } from './priorities.js';
+  import { PLATFORMS, PLATFORM_OTHER } from './platforms.js';
   import Icon from './Icon.svelte';
 
   let {
@@ -41,6 +42,11 @@
   let client = $state(untrack(() => source?.client ?? ''));
   let title = $state(untrack(() => source?.title ?? ''));
   let postType = $state(untrack(() => source?.post_type ?? ''));
+  // A stored platform outside the fixed list (typed in via "Други" on some earlier
+  // save) still needs to round-trip correctly when the task is reopened for editing —
+  // it lands in the free-text field, with the select itself falling back to PLATFORM_OTHER.
+  let platform = $state(untrack(() => (source?.platform && !PLATFORMS.includes(source.platform) ? PLATFORM_OTHER : (source?.platform ?? ''))));
+  let platformOther = $state(untrack(() => (source?.platform && !PLATFORMS.includes(source.platform) ? source.platform : '')));
   // '' (not 0/null) so the empty "— Без —" <option> below binds correctly — coerced
   // back to a number or null in handleSubmit.
   let priority = $state(untrack(() => source?.priority ?? ''));
@@ -65,6 +71,17 @@
   let emailBody = $state(untrack(() => source?.email_body ?? ''));
   let saving = $state(false);
   let error = $state('');
+
+  // "Изпрати имейл при завършване" silently no-ops server-side if the account has no
+  // Gmail App Password configured (see backend/src/email.js) — nothing in the task's
+  // own save/complete flow would ever surface that, so the checkbox itself has to warn
+  // about it here. null = not loaded yet (no warning while we don't know).
+  let senderConfigured = $state(null);
+  if (!untrack(() => readOnly)) {
+    getEmailSenderSettings()
+      .then((s) => (senderConfigured = s.hasAppPassword))
+      .catch(() => {});
+  }
 
   let imageUploading = $state(false);
   let imageError = $state('');
@@ -109,6 +126,7 @@
       shared,
       client: client || null,
       post_type: postType || null,
+      platform: platform === PLATFORM_OTHER ? platformOther.trim() || null : platform || null,
       priority: priority !== '' ? Number(priority) : null,
       image_path: imagePath,
       status: done ? 'done' : 'pending',
@@ -182,6 +200,23 @@
 
     <div class="row">
       <label>
+        Платформа (по избор)
+        <select bind:value={platform}>
+          <option value="">— Без —</option>
+          {#each PLATFORMS as p}<option value={p}>{p}</option>{/each}
+          <option value={PLATFORM_OTHER}>{PLATFORM_OTHER}</option>
+        </select>
+      </label>
+      {#if platform === PLATFORM_OTHER}
+        <label>
+          Коя платформа
+          <input type="text" bind:value={platformOther} placeholder="напр. Pinterest" required />
+        </label>
+      {/if}
+    </div>
+
+    <div class="row">
+      <label>
         Дата (по избор)
         <input type="date" bind:value={date} />
       </label>
@@ -247,6 +282,12 @@
 
     {#if emailOnComplete}
       <div class="email-fields">
+        {#if senderConfigured === false}
+          <p class="warning">
+            Нямаш настроен имейл подател — писмото няма да излезе. Настрой Gmail App
+            Password от Настройки → Имейл подател.
+          </p>
+        {/if}
         <label>
           Имейл
           <input type="email" bind:value={emailTo} placeholder="someone@example.com" required />
@@ -503,5 +544,14 @@
     font-size: 0.85rem;
     margin: 0;
     font-weight: normal;
+  }
+  .warning {
+    color: var(--color-danger);
+    background: var(--color-danger-tint);
+    font-size: 0.8rem;
+    font-weight: normal;
+    margin: 0 0 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 6px;
   }
 </style>

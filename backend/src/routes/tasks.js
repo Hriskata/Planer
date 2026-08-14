@@ -119,9 +119,11 @@ function validateTaskInput(body, { partial = false } = {}) {
     data.notes = null;
   }
 
-  // client, post_type, image_path, email_subject, email_body: simple optional text
-  // fields, same shape as notes.
-  for (const field of ['client', 'post_type', 'image_path', 'email_subject', 'email_body']) {
+  // client, post_type, platform, image_path, email_subject, email_body: simple optional
+  // text fields, same shape as notes. platform holds the dropdown's chosen value verbatim
+  // (including free text typed in for "Други") — no fixed enum enforced server-side, same
+  // as post_type, so the option list can change on the frontend without a migration.
+  for (const field of ['client', 'post_type', 'platform', 'image_path', 'email_subject', 'email_body']) {
     if (body[field] !== undefined) {
       if (body[field] !== null) {
         if (typeof body[field] !== 'string') {
@@ -230,7 +232,7 @@ router.get('/', (req, res) => {
   // query text in JS) so both params are always bound, regardless of which side is true.
   const baseQuery = `
     SELECT id, user_id, title, notes, date, time, status, shared, color,
-           client, post_type, priority, image_path, created_at, updated_at,
+           client, post_type, platform, priority, image_path, created_at, updated_at,
            ${REDACTED_EMAIL_COLUMNS}
     FROM tasks
     WHERE (
@@ -265,7 +267,7 @@ router.get('/unscheduled', (req, res) => {
   const rows = db
     .prepare(
       `SELECT id, user_id, title, notes, date, time, status, shared, color,
-              client, post_type, priority, image_path, reminder_sent, created_at, updated_at,
+              client, post_type, platform, priority, image_path, reminder_sent, created_at, updated_at,
               ${REDACTED_EMAIL_COLUMNS}
        FROM tasks
        WHERE (
@@ -288,11 +290,11 @@ router.post('/', (req, res) => {
   const result = db
     .prepare(
       `INSERT INTO tasks (
-         user_id, title, notes, date, time, status, shared, client, post_type, priority,
+         user_id, title, notes, date, time, status, shared, client, post_type, platform, priority,
          image_path, email_on_complete, email_to, email_subject, email_body
        )
        VALUES (
-         @userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @priority,
+         @userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @platform, @priority,
          @image_path, @email_on_complete, @email_to, @email_subject, @email_body
        )`
     )
@@ -311,7 +313,11 @@ router.post('/', (req, res) => {
     const sender = getEmailSender(req.user.id);
     sendTaskCompletionEmail(created, sender)
       .then((sent) => {
-        if (sent) db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(created.id);
+        if (sent) {
+          db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(created.id);
+        } else {
+          console.warn('Имейл при завършване прескочен за задача', created.id, '— подателят няма настроен Gmail App Password.');
+        }
       })
       .catch((err) => {
         console.error('Имейл при завършване — грешка за задача', created.id, ':', err.message);
@@ -367,7 +373,7 @@ router.put('/:id', (req, res) => {
   db.prepare(
     `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
        status = @status, shared = @shared, client = @client,
-       post_type = @post_type, priority = @priority, image_path = @image_path,
+       post_type = @post_type, platform = @platform, priority = @priority, image_path = @image_path,
        email_on_complete = @email_on_complete, email_to = @email_to,
        email_subject = @email_subject, email_body = @email_body, email_sent = @emailSent,
        reminder_sent = @reminderSent, updated_at = datetime('now')
@@ -381,6 +387,7 @@ router.put('/:id', (req, res) => {
     shared: merged.shared,
     client: merged.client,
     post_type: merged.post_type,
+    platform: merged.platform,
     priority: merged.priority,
     image_path: merged.image_path,
     email_on_complete: merged.email_on_complete,
@@ -400,7 +407,11 @@ router.put('/:id', (req, res) => {
     const sender = getEmailSender(req.user.id);
     sendTaskCompletionEmail(merged, sender)
       .then((sent) => {
-        if (sent) db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(task.id);
+        if (sent) {
+          db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(task.id);
+        } else {
+          console.warn('Имейл при завършване прескочен за задача', task.id, '— подателят няма настроен Gmail App Password.');
+        }
       })
       .catch((err) => {
         console.error('Имейл при завършване — грешка за задача', task.id, ':', err.message);

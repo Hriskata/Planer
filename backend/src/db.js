@@ -24,6 +24,7 @@ for (const [column, type] of [
   ['color', 'TEXT'],
   ['client', 'TEXT'],
   ['post_type', 'TEXT'],
+  ['platform', 'TEXT'],
   ['priority', 'INTEGER'],
   ['image_path', 'TEXT'],
   ['reminder_sent', 'INTEGER NOT NULL DEFAULT 0'],

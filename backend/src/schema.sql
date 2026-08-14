@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS tasks (
                                              -- post_type on the frontend (colors.js)
   client TEXT,
   post_type TEXT,
+  platform TEXT,                            -- e.g. 'Facebook', 'Instagram', ... or free text
+                                             -- when the user picks "Други" in the dropdown
   priority INTEGER,                         -- 1 (most urgent) to 4 (least), or NULL = unset
   image_path TEXT,                          -- e.g. '/uploads/<uuid>.jpg', or NULL
   reminder_sent INTEGER NOT NULL DEFAULT 0, -- 1 once the 10-min-before push has gone out
