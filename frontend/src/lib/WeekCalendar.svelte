@@ -20,24 +20,6 @@
     }))
   );
 
-  // Fills the rest of the browser window below the header instead of a fixed vh
-  // percentage, so the calendar actually scales with the real screen size (laptop,
-  // external monitor, etc.). Re-measured on resize since the chrome above (search bar,
-  // filter dropdowns) can wrap to more lines.
-  const MIN_BODY_HEIGHT = 240;
-  let gridEl;
-  let bodyHeight = $state(400);
-  function measureBodyHeight() {
-    if (!gridEl) return;
-    const top = gridEl.getBoundingClientRect().top;
-    bodyHeight = Math.max(MIN_BODY_HEIGHT, window.innerHeight - top - 16);
-  }
-
-  $effect(() => {
-    weekDates;
-    measureBodyHeight();
-  });
-
   // Click-to-create on empty column space — the posts handle their own clicks (edit,
   // toggle-done, drag), so this only fires when the click didn't land on one. No hour
   // grid here, so a click just creates an untimed post for that day — the user sets a
@@ -49,8 +31,6 @@
     onCreate(date, null);
   }
 </script>
-
-<svelte:window onresize={measureBodyHeight} />
 
 <div class="calendar">
   <!-- Single horizontally-scrolling wrapper so the header and post columns stay
@@ -65,11 +45,7 @@
       {/each}
     </div>
 
-    <!-- gridEl is measured from here, NOT from a wrapper around .header-row too — the
-         header is a sibling above, so its height is already excluded from bodyHeight
-         (see measureBodyHeight). Nesting the header inside this element instead would
-         double-count its height into every column's available space. -->
-    <div class="grid" bind:this={gridEl}>
+    <div class="grid">
       {#each dayData as day (day.date)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -81,7 +57,6 @@
           class:weekend={isWeekend(day.date)}
           class:read-only={readOnly}
           data-date={day.date}
-          style="height: {bodyHeight}px"
           onclick={(e) => handleColumnClick(e, day.date)}
         >
           {#each day.tasks as task (task.id)}
@@ -112,9 +87,7 @@
        on narrow screens lets unbroken post-label text (white-space: nowrap) push each
        column wider than its fair share, overflowing the whole grid past the viewport
        with no scroll container to reach it (same overflow quirk as MonthCalendar). Both
-       grids share this exact template so header and post columns stay aligned — neither
-       one has its own vertical scrollbar (that lives per-column inside .day-column), so
-       there's no scrollbar-width mismatch between them to compensate for. */
+       grids share this exact template so header and post columns stay aligned. */
     grid-template-columns: repeat(7, minmax(110px, 1fr));
   }
   .header-row {
@@ -145,7 +118,10 @@
   .day-column {
     border-left: 1px solid var(--color-border-strong);
     min-width: 0;
-    overflow-y: auto;
+    /* No fixed height/overflow here anymore — the column just grows with its posts.
+       If a day (or the week as a whole) ends up taller than the viewport, .app-shell
+       itself scrolls under the sticky header (see MainView.svelte), instead of each
+       column carrying its own separate, easy-to-miss internal scrollbar. */
     padding: 0.4rem;
     display: flex;
     flex-direction: column;
