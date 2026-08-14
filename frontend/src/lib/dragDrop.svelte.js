@@ -10,8 +10,9 @@ const MOVE_THRESHOLD = 6; // px before a press counts as a drag rather than a ta
 export const UNSCHEDULED = '__unscheduled__';
 
 // Every element a task can be dropped onto, app-wide: week view's day columns, month
-// view's day cells, and the backlog column (all three carry a data-date attribute).
-export const DROP_TARGET_SELECTOR = '.day-column, .day-cell, .backlog';
+// view's day cells, day view's own single-day grid, and the backlog column (all four
+// carry a data-date attribute).
+export const DROP_TARGET_SELECTOR = '.day-column, .day-cell, .day-grid, .backlog';
 
 let dragState = $state(null); // { task, startX, startY, moved, x, y } | null
 let suppressNextClick = false;

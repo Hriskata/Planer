@@ -618,21 +618,26 @@
     font-size: 0.75rem;
   }
   main {
-    padding: 0 1rem 5rem;
-    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    /* Bottom padding is just breathing room now (was 5rem, reserved so the fixed FAB
+       never overlapped content) — the FAB is meant to float in front of the
+       calendar/backlog boxes now that they stretch to the bottom of the screen (see
+       .fab's z-index below), not sit in a dead zone below them. */
+    padding: 0 1rem 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     /* width + align-self, not max-width + margin: auto — see .search-bar's comment
        above for why (auto margins on a flex item's cross axis suppress stretch, so it
        shrinks to its content's width instead of filling up to the cap; this broke
        exactly this way in production once main became a flex item of .app-shell). */
     width: min(1600px, 96vw);
     align-self: center;
-    /* flex:1 + min-height:0 + column: lets .content-row below (and, so far, only
-       WeekCalendar's own box within it — see its own comment) stretch to actually
-       reach the bottom of the screen instead of shrink-wrapping to its content, same
-       fix as LibraryPage's client-sidebar. min-height:0 is required at EVERY level of
-       this chain (main → .content-row → .calendar-area → WeekCalendar's .calendar) or
-       the flex default (min-height: auto) makes each one refuse to shrink below its
-       own content, which was the exact bug that broke this the first time. */
+    /* flex:1 + min-height:0 + column: lets .content-row below (Day/Week/Month's own
+       calendar box, and BacklogColumn beside it — see their own comments) stretch to
+       actually reach the bottom of the screen instead of shrink-wrapping to its
+       content, same fix as LibraryPage's client-sidebar. min-height:0 is required at
+       EVERY level of this chain (main → .content-row → .calendar-area → the active
+       view's own box) or the flex default (min-height: auto) makes each one refuse to
+       shrink below its own content, which was the exact bug that broke this the first
+       time. */
     flex: 1;
     min-height: 0;
     display: flex;
@@ -721,6 +726,12 @@
     position: fixed;
     right: 1.25rem;
     bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    /* Now that the calendar/backlog boxes stretch down near the bottom of the screen
+       (see main's reduced padding-bottom above), the FAB deliberately floats in front
+       of them instead of living below in what used to be empty space — explicit
+       z-index (above header's 10) so it stays clickable/visible on top regardless of
+       DOM order. */
+    z-index: 20;
     width: 3.25rem;
     height: 3.25rem;
     border-radius: 50%;
