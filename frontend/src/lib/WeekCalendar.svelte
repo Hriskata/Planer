@@ -76,9 +76,25 @@
     border-radius: 10px;
     overflow: hidden;
     background: var(--color-surface);
+    /* Stretches down to the bottom of the screen (with the usual breathing room, via
+       MainView's <main> padding) instead of shrink-wrapping to however many posts
+       happen to exist that week — same fix as LibraryPage's client-sidebar. Needs
+       MainView's main/.content-row/.calendar-area to each pass flex:1 + min-height:0
+       down to here; see main's own comment for why min-height:0 has to repeat at every
+       level. */
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   .scroll-x {
+    /* Both axes: horizontal for narrow phone screens (header/posts scroll together,
+       see below), vertical so the box actually fills .calendar's stretched height and
+       scrolls its own content instead of growing past it. */
     overflow-x: auto;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
   }
   .header-row,
   .grid {
@@ -118,10 +134,10 @@
   .day-column {
     border-left: 1px solid var(--color-border-strong);
     min-width: 0;
-    /* No fixed height/overflow here anymore — the column just grows with its posts.
-       If a day (or the week as a whole) ends up taller than the viewport, .app-shell
-       itself scrolls under the sticky header (see MainView.svelte), instead of each
-       column carrying its own separate, easy-to-miss internal scrollbar. */
+    /* No fixed height/overflow here — the column just grows with its posts; .scroll-x
+       above is what scrolls (as one unit, header-row included) once the week's content
+       taller than the box, instead of each column carrying its own separate,
+       easy-to-miss internal scrollbar. */
     padding: 0.4rem;
     display: flex;
     flex-direction: column;

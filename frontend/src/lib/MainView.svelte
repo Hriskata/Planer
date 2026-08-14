@@ -625,6 +625,17 @@
        exactly this way in production once main became a flex item of .app-shell). */
     width: min(1600px, 96vw);
     align-self: center;
+    /* flex:1 + min-height:0 + column: lets .content-row below (and, so far, only
+       WeekCalendar's own box within it — see its own comment) stretch to actually
+       reach the bottom of the screen instead of shrink-wrapping to its content, same
+       fix as LibraryPage's client-sidebar. min-height:0 is required at EVERY level of
+       this chain (main → .content-row → .calendar-area → WeekCalendar's .calendar) or
+       the flex default (min-height: auto) makes each one refuse to shrink below its
+       own content, which was the exact bug that broke this the first time. */
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   h2 {
     font-size: 1.05rem;
@@ -640,10 +651,15 @@
     display: flex;
     gap: 1rem;
     align-items: stretch;
+    flex: 1;
+    min-height: 0;
   }
   .calendar-area {
     flex: 1;
     min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   @media (max-width: 720px) {
     .content-row {
