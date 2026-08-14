@@ -375,6 +375,7 @@
         {readOnly}
         onEdit={openEditForm}
         onToggle={handleToggleStatus}
+        onCreate={() => handleGridCreate(null)}
       />
     </div>
   {/if}
@@ -669,8 +670,17 @@
   .day-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    /* align-content/align-items: start, not the grid default (normal → stretch) — this
+       box now stretches to fill .calendar-area (flex:1 below) so empty space below the
+       last row is still clickable, same as WeekCalendar's day-column, but without
+       align-content:start the single row of tiles would itself stretch to fill that
+       full height instead of staying their natural content height. */
+    align-content: start;
+    align-items: start;
     gap: 0.75rem;
-    min-height: 120px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     cursor: pointer;
   }
   .day-grid.read-only {
