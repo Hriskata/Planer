@@ -5,13 +5,12 @@
     deleteLibraryAsset,
     getTaskClients,
     getTasksByClient,
-    updateTask,
   } from './api.js';
   import { extractClients } from './search.js';
   import { ASSET_TYPES, assetTypeIsText, assetTypeIsColor, sortAssetTypeLabels } from './libraryTypes.js';
-  import { todayStr, displayDate } from './date.js';
-  import PostTile from './PostTile.svelte';
+  import { todayStr, addMonths, getMonthGridDates, monthLabel } from './date.js';
   import TaskForm from './TaskForm.svelte';
+  import MonthCalendar from './MonthCalendar.svelte';
 
   // activeCalendarOwnerId: null = your own library; otherwise the owner id of a
   // calendar shared with you (see CalendarSwitcher.svelte in MainView's header, which
@@ -46,6 +45,9 @@
   let showTaskForm = $state(false);
   let editingPost = $state(null);
   let duplicatePostFrom = $state(null);
+  // Reference date for the Постове tab's own month calendar — independent of Планер's
+  // main calendar (a different page, a different "which month am I looking at").
+  let libraryDate = $state(todayStr());
 
   async function load() {
     loading = true;
@@ -117,6 +119,18 @@
     sortAssetTypeLabels(tasksReadOnly ? ASSET_TYPES : [...ASSET_TYPES, POST_TYPE_OPTION])
   );
 
+  const libraryMonthDates = $derived(getMonthGridDates(libraryDate));
+  const libraryReferenceMonth = $derived(libraryDate.slice(0, 7));
+  function libraryGoPrev() {
+    libraryDate = addMonths(libraryDate, -1);
+  }
+  function libraryGoNext() {
+    libraryDate = addMonths(libraryDate, 1);
+  }
+  function libraryGoToday() {
+    libraryDate = todayStr();
+  }
+
   // Mirrors the backend's exact permission check (routes/library.js) so the × button
   // simply doesn't render for materials a delete request would 403 on anyway — the
   // owner of the library has admin-style rights over everything in it, anyone else may
@@ -142,13 +156,14 @@
     load();
   }
 
-  // Shared by the Постове tab's own FAB and by picking "Пост" in the upload form's own
-  // Тип dropdown (see handleFormTypeChange) — both just want a blank TaskForm prefilled
-  // with whichever client is currently in scope.
-  function startNewPost(clientHint) {
-    if (tasksReadOnly) return; // both call sites already guard against this; belt-and-suspenders
+  // Shared by the Постове tab's own FAB, the month calendar's click-to-create (which
+  // additionally pins a date), and by picking "Пост" in the upload form's own Тип
+  // dropdown (see handleFormTypeChange) — all just want a blank TaskForm prefilled with
+  // whichever client (and, for the calendar, day) is currently in scope.
+  function startNewPost(clientHint, date) {
+    if (tasksReadOnly) return; // all call sites already guard against this; belt-and-suspenders
     editingPost = null;
-    duplicatePostFrom = clientHint ? { client: clientHint } : null;
+    duplicatePostFrom = clientHint || date ? { client: clientHint || '', ...(date ? { date } : {}) } : null;
     showTaskForm = true;
   }
 
@@ -185,17 +200,6 @@
   function handlePostSaved() {
     showTaskForm = false;
     loadPosts();
-  }
-
-  async function handleTogglePost(post) {
-    if (tasksReadOnly) return;
-    const next = post.status === 'done' ? 'pending' : 'done';
-    try {
-      await updateTask(post.id, { status: next });
-      await loadPosts();
-    } catch (err) {
-      error = err.message;
-    }
   }
 
   const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'];
@@ -313,22 +317,27 @@
     {#if error}<p class="error">{error}</p>{/if}
 
     {#if selectedType === POSTS_TAB}
-      {#if postsLoading}
-        <p class="empty">Зареждане...</p>
-      {:else if posts.length === 0}
-        <p class="empty">Няма постове{selectedClient ? ` за ${selectedClient}` : ''}.</p>
-      {:else}
-        <div class="post-grid">
-          {#each posts as post (post.id)}
-            <div class="post-cell">
-              <span class="post-date">
-                {post.date ? displayDate(post.date) : 'Без дата'}{post.time ? ` · ${post.time}` : ''}
-              </span>
-              <PostTile task={post} onEdit={openEditPost} onToggle={handleTogglePost} readOnly={tasksReadOnly} />
-            </div>
-          {/each}
+      <div class="calendar-area">
+        <div class="month-nav">
+          <button onclick={libraryGoPrev} aria-label="Предишен месец">‹</button>
+          <h3>{monthLabel(libraryDate)}</h3>
+          <button onclick={libraryGoToday}>Днес</button>
+          <button onclick={libraryGoNext} aria-label="Следващ месец">›</button>
         </div>
-      {/if}
+        {#if postsLoading}
+          <p class="empty">Зареждане...</p>
+        {:else}
+          <MonthCalendar
+            monthDates={libraryMonthDates}
+            referenceMonth={libraryReferenceMonth}
+            tasks={posts}
+            onEdit={openEditPost}
+            onDayClick={() => {}}
+            onCreate={(date) => startNewPost(selectedClient, date)}
+            readOnly={tasksReadOnly}
+          />
+        {/if}
+      </div>
     {:else if loading}
       <p class="empty">Зареждане...</p>
     {:else if filteredAssets.length === 0}
@@ -530,12 +539,19 @@
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
+    /* Column so the Постове tab's .calendar-area below can claim the leftover height
+       with flex:1 (same reasoning as MainView's own .calendar-area) — the asset/post
+       grids in the other tabs don't opt into that (no flex:1 of their own), so they're
+       unaffected and still just size to content with this element scrolling them. */
+    display: flex;
+    flex-direction: column;
   }
   .type-tabs {
     display: flex;
     gap: 0.4rem;
     flex-wrap: wrap;
     margin-bottom: 1rem;
+    flex-shrink: 0;
   }
   .type-tabs button {
     background: var(--color-surface);
@@ -552,20 +568,43 @@
     color: white;
     font-weight: 600;
   }
-  .asset-grid,
-  .post-grid {
+  .asset-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 1rem;
   }
-  .post-cell {
+  /* Wraps the month nav + MonthCalendar (Постове tab) — named to match MainView's own
+     .calendar-area purely so MonthCalendar's measureRowHeight (gridEl.closest(
+     '.calendar-area')) finds a real, height-bound ancestor here too, the same way it
+     does on the main calendar page, instead of falling back to the whole window. */
+  .calendar-area {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
   }
-  .post-date {
-    font-size: 0.75rem;
-    color: var(--color-text-faint);
+  .month-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+  }
+  .month-nav h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+    min-width: 9rem;
+  }
+  .month-nav button {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
   }
   .asset-card {
     position: relative;
