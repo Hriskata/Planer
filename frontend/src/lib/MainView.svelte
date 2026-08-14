@@ -541,8 +541,14 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0 1rem 0.5rem;
-    max-width: min(1600px, 96vw);
-    margin: 0 auto;
+    /* width (not max-width) + align-self (not margin: auto) — now that this is a flex
+       item of .app-shell, auto margins on the cross axis suppress stretch and the item
+       shrinks to fit its own content instead of filling up to the cap, which is the
+       opposite of what "max-width, centered" was trying to do. An explicit width sizes
+       it definitely regardless of content; align-self centers it the same as the old
+       margin: auto did. See the identical fix on main/.filter-selects below. */
+    width: min(1600px, 96vw);
+    align-self: center;
     flex-wrap: wrap;
   }
   .search-input {
@@ -589,8 +595,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0 1rem 0.75rem;
-    max-width: min(1600px, 96vw);
-    margin: 0 auto;
+    width: min(1600px, 96vw);
+    align-self: center;
   }
   .filter-select {
     font-size: 0.8rem;
@@ -613,8 +619,12 @@
   main {
     padding: 0 1rem 5rem;
     padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
-    max-width: min(1600px, 96vw);
-    margin: 0 auto;
+    /* width + align-self, not max-width + margin: auto — see .search-bar's comment
+       above for why (auto margins on a flex item's cross axis suppress stretch, so it
+       shrinks to its content's width instead of filling up to the cap; this broke
+       exactly this way in production once main became a flex item of .app-shell). */
+    width: min(1600px, 96vw);
+    align-self: center;
   }
   h2 {
     font-size: 1.05rem;

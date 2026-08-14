@@ -74,6 +74,7 @@ docker compose -p planer up -d --build app
 - **Read-only enforcement**: `<fieldset disabled={readOnly}>` в TaskForm (не per-field), `readOnly` prop прекаран през PostTile/WeekCalendar/MonthCalendar/BacklogColumn за checkbox/drag/click-to-create.
 - **Design system**: CSS custom properties в `app.css` (light+dark блокове), Feather икони чрез `Icon.svelte`, цветовете по тип пост са координирано hue-rotation семейство, приоритетните цветове са отделен red→gray градиент (умишлено различен визуален език).
 - **Build/push дисциплина**: НИКОГА `docker compose build`/`up --build` или `git push` без буквалната дума **"Билдни"** от потребителя — не питай, само чакай.
+- **Layout**: MainView.svelte-ов `.app-shell` (header + page body) е `height:100dvh; overflow-y:auto` — самият shell скролва, не страницата; header-ът е `position:sticky; top:0`. Вложени flex деца (напр. LibraryPage-ов `.client-sidebar`) се нуждаят от изричен `min-height:0`, иначе `min-height:auto` подразбирането ги кара да наложат собствената си content височина нагоре по цялата flex верига.
 
 ## 5. Капани / за какво да внимаваш
 
@@ -91,7 +92,7 @@ docker compose -p planer up -d --build app
 При компресиране на контекста, задължително запази:
 - **Build/push правилото**: build/push САМО на буквалната дума "Билдни", без изключения, без да питаш предварително.
 - **handbook.md правилото** (виж т.8 по-долу) — не пропускай запис там при нова user-facing setup функционалност.
-- **Текущ статус (обновено 2026-08-14)**: библиотеката е свързана с Планера — клиентите вече са общо множество от `tasks.client` ∪ `library_assets.client` (нов `GET /api/tasks/clients`), нов таб "Постове" в LibraryPage показва/създава/редактира реални задачи по клиент (reuse на PostTile+TaskForm, СТРИКТНО read-only при споделен календар — различно от library-то самото, виж т.4) — тествана end-to-end, чака "Билдни".
+- **Текущ статус (обновено 2026-08-14)**: Асет библиотеката е завършена и стабилна — тип "Цвят" (hex/rgb/снимка, поне едно, не всички задължителни), клиентите свързани с `tasks.client` ∪ `library_assets.client`, таб "Постове" (reuse на PostTile+TaskForm, read-only при споделен календар), филтрите/типовете сортирани азбучно (Друго последно), и `.app-shell` layout фикс (header `position:sticky`, `.app-shell` е дефинирано `100dvh` + `overflow-y:auto` — вътрешен скрол вместо скрол на цялата страница; nested flex деца се нуждаят от изричен `min-height:0`, иначе content-ът им пробива нагоре по веригата). Всичко билднато, commit-нато и пушнато (последен commit `d1fd227`). Няма чакаща некомитната работа.
 
 ## 7. Кога да се ъпдейтва този файл
 
