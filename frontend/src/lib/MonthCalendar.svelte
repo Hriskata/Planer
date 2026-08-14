@@ -22,7 +22,17 @@
     if (!gridEl) return;
     const rows = monthDates.length / 7;
     const top = gridEl.getBoundingClientRect().top;
-    const available = window.innerHeight - top - 16;
+    // Bottom edge of .calendar-area itself (already correctly inset by <main>'s own
+    // bottom padding), not window.innerHeight minus a hardcoded guess — that guess only
+    // happened to look right when it coincidentally matched main's padding-bottom at
+    // the time, and silently drifted out of sync (visibly bigger gap above the "август
+    // 2026" label than below the grid) the moment that padding changed. Measuring the
+    // real container edge keeps the leftover space at the bottom equal to h2's own
+    // margin-top below, by construction, regardless of viewport height or future
+    // padding tweaks.
+    const container = gridEl.closest('.calendar-area');
+    const bottom = container ? container.getBoundingClientRect().bottom : window.innerHeight;
+    const available = bottom - top;
     rowHeight = Math.max(MIN_ROW_HEIGHT, Math.floor(available / rows));
   }
 

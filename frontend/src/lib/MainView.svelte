@@ -647,7 +647,12 @@
     font-size: 1.05rem;
     font-weight: 600;
     color: var(--color-text);
-    margin: 1.25rem 0 0.5rem;
+    /* margin-top intentionally matches main's own padding-bottom (1rem) — MonthCalendar
+       fills the rest of .calendar-area down to its real bottom edge (see its own
+       measureRowHeight comment), so keeping this the same value gives the month label
+       equal breathing room above as the grid has below, instead of drifting out of sync
+       whenever one of the two changes. */
+    margin: 1rem 0 0.5rem;
     letter-spacing: -0.005em;
   }
   /* The backlog column is a fixed-width sibling, which is what shrinks the calendar
