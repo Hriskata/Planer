@@ -319,8 +319,8 @@
     {#if selectedType === POSTS_TAB}
       <div class="calendar-area">
         <div class="month-nav">
-          <button onclick={libraryGoPrev} aria-label="Предишен месец">‹</button>
           <h3>{monthLabel(libraryDate)}</h3>
+          <button onclick={libraryGoPrev} aria-label="Предишен месец">‹</button>
           <button onclick={libraryGoToday}>Днес</button>
           <button onclick={libraryGoNext} aria-label="Следващ месец">›</button>
         </div>
