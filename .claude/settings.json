@@ -1,7 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(curl -s --max-time 2 http://localhost:5173/ -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s --max-time 3 http://localhost:5173/ -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(timeout 40 node \"C:/Users/Qclown/AppData/Local/Temp/claude/c--------/b1e06134-1c0f-491e-8868-4e8324e80ed5/scratchpad/screenshot-redesign.js\")",
+      "Bash(npx --yes playwright@1.62.1 --help)",
+      "Bash(node -e \"console.log\\(require.resolve\\('playwright'\\)\\)\")",
+      "Bash(timeout 60 node screenshot-redesign.js)",
+      "Bash(npx playwright *)",
+      "Bash(curl -s --max-time 3 http://localhost:3000/api/tasks -o /dev/null -w \"backend direct: %{http_code}\\\\n\")",
+      "PowerShell(Get-Process \"Docker Desktop\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Start-Process \"C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe\")",
+      "Bash(curl -s --max-time 5 http://localhost:3000/api/tasks -o /dev/null -w \"backend direct: %{http_code}\\\\n\")",
+      "Bash(timeout 60 node seed-and-shot.js)",
+      "Bash(timeout 30 node cleanup-seeded.js seeded-ids.json)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(pkill -f \"npm run dev\")",
+      "Bash(docker stop *)",
+      "Bash(docker volume *)",
+      "Bash(docker run *)",
+      "Bash(curl -s --max-time 3 http://localhost:3001/api/tasks -o /dev/null -w \"backend on 3001: %{http_code}\\\\n\")"
     ]
   }
 }
