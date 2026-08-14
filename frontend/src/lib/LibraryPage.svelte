@@ -23,6 +23,12 @@
   // content pane to that client's tasks instead of library materials (see below).
   const POSTS_TAB = 'Постове';
 
+  // Also a pseudo type — offered in the upload form's own "Тип" dropdown (alongside
+  // Лого/Шрифт/...) so a post can be created while creating a new object from ANY tab,
+  // not just after first switching to the Постове tab. Picking it hands off straight to
+  // TaskForm instead of ever becoming a library_assets row — see handleFormTypeChange.
+  const POST_TYPE_OPTION = 'Пост';
+
   // Task sharing stays strictly read-only (see calendarAccess.js / CLAUDE.md) even
   // though library material sharing is more permissive (upload allowed) — this tab pulls
   // in real `tasks` rows, so it must follow tasks' own, stricter rule, not the library's.
@@ -128,14 +134,31 @@
     load();
   }
 
+  // Shared by the Постове tab's own FAB and by picking "Пост" in the upload form's own
+  // Тип dropdown (see handleFormTypeChange) — both just want a blank TaskForm prefilled
+  // with whichever client is currently in scope.
+  function startNewPost(clientHint) {
+    if (tasksReadOnly) return; // both call sites already guard against this; belt-and-suspenders
+    editingPost = null;
+    duplicatePostFrom = clientHint ? { client: clientHint } : null;
+    showTaskForm = true;
+  }
+
   function handleFabClick() {
     if (selectedType === POSTS_TAB) {
-      if (tasksReadOnly) return; // FAB is hidden in this case anyway; belt-and-suspenders
-      editingPost = null;
-      duplicatePostFrom = selectedClient ? { client: selectedClient } : null;
-      showTaskForm = true;
+      startNewPost(selectedClient);
     } else {
       openUploadForm();
+    }
+  }
+
+  // "Пост" in the upload form's Тип dropdown is a pseudo option (see its definition) —
+  // picking it never becomes a library_assets row, it just hands off to TaskForm
+  // immediately, closing the upload modal in the same motion.
+  function handleFormTypeChange() {
+    if (formType === POST_TYPE_OPTION) {
+      showUploadForm = false;
+      startNewPost(formClient.trim());
     }
   }
 
@@ -197,7 +220,10 @@
 
   function openUploadForm() {
     formClient = selectedClient;
-    formType = ASSET_TYPES[0];
+    // Pre-select whatever type tab is currently active (e.g. "+" while on Цвят starts a
+    // new Цвят) — only when it's a real material type, though; "Всички" (no tab narrowed
+    // down) still falls back to the first type, same as before.
+    formType = ASSET_TYPES.includes(selectedType) ? selectedType : ASSET_TYPES[0];
     formTitle = '';
     formTextContent = '';
     formHexCode = '';
@@ -386,8 +412,9 @@
           </label>
           <label>
             Тип
-            <select bind:value={formType}>
+            <select bind:value={formType} onchange={handleFormTypeChange}>
               {#each ASSET_TYPES as t (t)}<option value={t}>{t}</option>{/each}
+              {#if !tasksReadOnly}<option value={POST_TYPE_OPTION}>{POST_TYPE_OPTION}</option>{/if}
             </select>
           </label>
           <label>
