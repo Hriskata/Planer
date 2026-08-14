@@ -74,6 +74,18 @@ curl "http://localhost:3000/api/tasks?date=2026-07-21" -H "Authorization: Bearer
 - CORS се включва само ако е зададен `CORS_ORIGIN` в `.env` — не е задължителен за нормалния dev workflow, защото Vite dev сървърът препраща `/api` заявките директно (виж по-долу). В production същият Express сървър сервира build-натия frontend от `frontend/dist`, така че CORS остава изключен изцяло.
 - SQLite файлът е на `DB_PATH` (по подразбиране `backend/data/tasks.db`) — не се качва в git.
 
+## Тестове
+
+```bash
+# Backend — вграденият node:test runner, интеграционни тестове срещу :memory: SQLite, нулева нова dependency
+cd backend && npm test
+
+# Frontend — Playwright E2E, пуска сам временен backend (порт 3901) + Vite dev сървър (порт 5273)
+cd frontend && npm run test:e2e
+```
+
+Никой от двата suite-а не пипа реалните dev/Docker данни — всеки работи срещу собствена, временна база.
+
 ## Frontend
 
 Svelte 5 + Vite + `vite-plugin-pwa` (manifest.json + Service Worker се генерират автоматично, вместо да се пишат на ръка).

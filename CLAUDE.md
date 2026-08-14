@@ -27,6 +27,7 @@ backend/src/
   notifications.js  push напомняния (setInterval, 30s)
   middleware/auth.js  requireAuth (JWT verify)
   routes/           auth, tasks, account, sharing, push, uploads, library
+backend/test/       node:test интеграционни тестове (виж т.3.1) — helpers.js, auth/tasks/library.test.js
 
 frontend/src/
   App.svelte        LandingPage → LoginView → MainView, по auth състояние
@@ -42,13 +43,15 @@ frontend/src/
   lib/Icon.svelte      споделени Feather икони (SVG paths директно от feathericons.com)
   lib/api.js           всички backend извиквания + offline localStorage кеш (library извикванията НЕ се кешират офлайн)
   lib/dragDrop.svelte.js   споделена pointer-based drag логика (.svelte.js за руни извън компонент)
+frontend/tests/      Playwright E2E тестове (виж т.3.1) — start-test-backend.cjs, e2e/*.spec.js
+frontend/playwright.config.js   двоен webServer (backend :3901 + Vite :5273), отделни портове от dev setup-а
 
-desktop-widget/     отделно Electron приложение (собствен README.md)
+desktop-widget/     отделно Electron приложение (собствен README.md) — НЕ се ъпдейтва рутинно, виж т.4
 ```
 
 ## 3. Стартиране и тестване
 
-**Няма автоматизиран тест suite.** Тестването досега е било ръчно: curl скриптове за backend + Playwright за frontend, срещу локално пуснат instance.
+**Автоматизиран тест suite съществува от 2026-08-15** (backend `node:test` + frontend Playwright E2E) — виж т.3.1 по-долу. Преди това цялото тестване е било ръчно (curl скриптове + ad hoc Playwright), тази практика продължава да е полезна за диагностика на живия Docker контейнер (виж т.5), но вече не е единственият guard срещу регресии.
 
 ```bash
 # Backend (dev)
@@ -65,6 +68,27 @@ docker compose -p planer up -d --build app
 
 **Установен pattern за бързо локално тестване без да пипаш реалните Docker данни**: пускай backend directly (`cd backend && PORT=4001 ENCRYPTION_KEY=... node src/index.js`) — ползва `backend/data/tasks.db`, отделна база от Docker-ския named volume (`planer-data`). Свободно можеш да сееш/трошиш тестови данни там.
 
+### 3.1 Автоматизирани тестове
+
+**Backend** — вграденият `node:test` runner (Node >=22.5, нулева нова dependency), интеграционни тестове срещу реален Express app + `DB_PATH=:memory:`:
+```bash
+cd backend && npm test   # node --test test/*.test.js
+```
+- `test/helpers.js` — сет-ъп: `:memory:` DB + временна `UPLOADS_DIR` преди `require('../src/app')`, `startServer()`/`stopServer()` (реален `app.listen(0)`, случаен порт), `createUser`/`tokenFor`/`shareCalendar`/`setEmail` хелпъри, `api()` fetch wrapper.
+- Всеки test файл се изпълнява в отделен process (node's default `--test` изолация) → отделна `:memory:` база — файловете помежду си НЕ споделят state, но тестовете В рамките на един файл го споделят (последователно изпълнение, уникални usernames за избягване на колизии).
+- Покрива: auth (login успех/неуспех, requireAuth guard), tasks CRUD + валидации (date/priority/email_on_complete) + unscheduled + `/clients` + ownership guard, library (Цвят hex/rgb/photo-поне-едно валидация, permission модела при `calendar_shares` — owner админ права vs uploader-only delete, виж т.4).
+- **НЕ покрива** (съзнателно, за да остане suite-ът фокусиран): push notifications, email изпращане (fire-and-forget, извън scope), account.js Gmail App Password енкрипцията отделно, sharing.js CRUD-а самия (само чрез директни DB insert-и в тестовете).
+
+**Frontend** — Playwright E2E, `@playwright/test` devDependency (версия pinned да съвпада с вече кешираната в `npx playwright` — виж [[reference_browser_testing_playwright]] паметта):
+```bash
+cd frontend && npm run test:e2e   # playwright test
+```
+- `playwright.config.js` пуска ДВА `webServer`-а сам (backend на порт 3901, Vite dev на 5273 с `BACKEND_PORT=3901`) — отделни портове от нормалния dev setup (3000/5173), за да не колизира с ръчно пусната `npm run dev` сесия.
+- `tests/start-test-backend.cjs` (`.cjs`, не `.js` — frontend `package.json` е `"type": "module"`, а скриптът ползва `require()` директно към `backend/src/db`+`app`) — трие стар temp DB файл при всяко пускане, сее фиксиран `e2euser`/`e2epass123` акаунт директно в SQLite (bcryptjs е frontend devDependency само за това).
+- `fullyParallel: false, workers: 1` — малък smoke suite, споделя един backend/DB между спецификациите, засега по-safe от per-test изолация.
+- Покрива: login (успех + грешна парола), click-to-create в Ден изгледа + toggle done чекбокс, месечна навигация (Напред/Назад сменя label-а).
+- `getByLabel('Клиент')`/`getByLabel('Заглавие')` изискват `{ exact: true }` — иначе колизират с филтърните dropdown-и в header-а (напр. "Филтър по клиент" съдържа "клиент" като case-insensitive substring).
+
 ## 4. Ключови архитектурни решения
 
 - **Auth**: JWT, 30 дни валидност, без refresh token (умишлено просто). Токен в `localStorage` (`planer_auth`).
@@ -80,6 +104,7 @@ docker compose -p planer up -d --build app
 - **Read-only enforcement**: `<fieldset disabled={readOnly}>` в TaskForm (не per-field), `readOnly` prop прекаран през PostTile/WeekCalendar/MonthCalendar/BacklogColumn за checkbox/drag/click-to-create.
 - **Design system**: CSS custom properties в `app.css` (light+dark блокове), Feather икони чрез `Icon.svelte`, цветовете по тип пост са координирано hue-rotation семейство, приоритетните цветове са отделен red→gray градиент (умишлено различен визуален език).
 - **Build/push дисциплина**: НИКОГА `docker compose build`/`up --build` или `git push` без буквалната дума **"Билдни"** от потребителя — не питай, само чакай.
+- **`desktop-widget/` (Electron, сваляема .exe версия) е замразена откъм ъпдейти** (реш. 2026-08-14): при обичайна feature/bug работа НЕ пипай/ъпдейтвай `desktop-widget/` кода, дори ако логично засегната споделена логика (напр. `frontend/src/lib/api.js`, `stores.js`, `colors.js`, използвани и от `widget.html`) технически би повлияла и на widget-а — само уеб/PWA частта се ъпдейтва рутинно. Ъпдейт на desktop-widget частта става САМО при изрично казано от потребителя (различно и допълнително към "Билдни", което е само за уеб/Docker build-а).
 - **Layout**: MainView.svelte-ов `.app-shell` (header + page body) е `height:100dvh; overflow-y:auto` — самият shell скролва, не страницата; header-ът е `position:sticky; top:0`. За да "опъне" някой вътрешен блок до долу на екрана (напр. LibraryPage-ов `.client-sidebar`/`.library-content`, или седмичния изглед — `main → .content-row → .calendar-area → WeekCalendar.calendar → .scroll-x`), всяко ниво по веригата трябва изрично `flex:1; min-height:0;` — иначе flex подразбирането `min-height:auto` кара всяко ниво да наложи собствената си content височина нагоре, независимо от `flex:1` (виж и т.5 за конкретния production бъг от това). Ден/Месец изгледите НЕ го правят — `.day-grid` и `MonthCalendar` растат/смятат собствена височина по различен модел (виж т.5).
 - **Landing page**: `LandingPage.svelte` (за неаутентикирани посетители) има собствен theme toggle бутон до "Вход", независим от MainView-овия (същата икона/логика, различен CSS контекст — не header, а обикновен светъл фон).
 
@@ -105,7 +130,7 @@ docker compose -p planer up -d --build app
 - **Build/push правилото**: build/push САМО на буквалната дума "Билдни", без изключения, без да питаш предварително.
 - **handbook.md правилото** (виж т.8 по-долу) — не пропускай запис там при нова user-facing setup функционалност.
 - **Update-преди-compact правилото** (виж т.7): освежи този файл (особено този статус ред) преди компактиране на контекста, проактивно, без потребителят да пита. Ако имаш съмнение кой файл се има предвид — това е `C:\Планер\CLAUDE.md`, питай само ако наистина не е ясно.
-- **Текущ статус (обновено 2026-08-14)**: Постове табът в LibraryPage вече показва истински месечен календар (reuse на `MonthCalendar`, собствена месец-навигация) вместо плосък списък с всички постове наведнъж — виж т.4/т.5. Преди това в същата сесия: фиксирани week/month grid clipping бъгове от `.app-shell` flex веригата (border-и/редове, спиращи преди края на кутията), drag-and-drop от "Неразпределени" към "Ден" (липсваща `.day-grid` в `DROP_TARGET_SELECTOR`), FAB бутонът вече плава пред календарните кутии (по-малко резервирано долно отстояние в `main`), click-to-create в целия Ден бокс и в "Неразпределени". Последен пушнат код commit: `ca67e2a`. Некомитната работа в момента: тази LibraryPage месечен календар фийчър — чака "Билдни".
+- **Текущ статус (обновено 2026-08-15)**: добавен е първият автоматизиран тест suite (виж т.3.1) — 22 backend `node:test` теста (всички минават) + 5 frontend Playwright E2E теста (всички минават), нулеви нови dependency-та за backend, `@playwright/test`+`bcryptjs` като нови frontend devDependencies. `desktop-widget/` НЕ е пипнат (замразен откъм рутинни ъпдейти, виж т.4). Преди това в тази сесия: LibraryPage-овия Постове таб вече показва истински месечен календар (reuse на `MonthCalendar`), фиксирани week/month grid clipping бъгове от `.app-shell` flex веригата, drag-and-drop от "Неразпределени" към "Ден", FAB бутонът плава пред календарните кутии, click-to-create в целия Ден бокс и в "Неразпределени". Последен пушнат код commit: `d0980d7`. Некомитната работа в момента: целият тест suite (backend `test/`, frontend `tests/`+`playwright.config.js`, package.json промени) — чака "Билдни".
 
 ## 7. Кога да се ъпдейтва този файл
 
@@ -113,6 +138,7 @@ docker compose -p planer up -d --build app
 - След завършване на значима фийчър.
 - Когато се установи повтарящо се недоразумение (напр. предложение на нещо вече отхвърлено).
 - **Преди компактиране на контекста (/compact) — задължително, без да чакаш потребителят да пита.** Освежи т.6 (Compact Instructions) и статус реда там, за да не се загуби актуален контекст при компресирането. Ако не се усетя навреме (компактирането се случва и автоматично, без изрично предупреждение), поне при следващия удобен момент в сесията.
+- **Ако файлът стане твърде тромав** (много раздели, твърде дълъг, трудно се навигира) — сам предложи разделяне на отделни подфайлове (напр. отделен `LAYOUT.md` за flexbox капаните), не чакай потребителят да го поиска. Виж и обсъждането от 2026-08-15: `CLAUDE.md` се зарежда автоматично в контекста всяка сесия (за разлика от други .md файлове, които изискват изрично Read) — това е причината да НЕ се цепи превантивно, докато остава разумно кратък.
 
 ## 8. handbook.md
 

@@ -1,6 +1,12 @@
 # Stage 1: build the frontend static assets (Svelte + Vite)
 FROM node:22-slim AS frontend-build
 WORKDIR /frontend
+# @playwright/test (E2E test devDependency, only ever run locally — see frontend/tests/)
+# pulls in `playwright`, whose own postinstall downloads a ~150-300MB Chromium binary by
+# default. Nothing in this image ever runs those tests, so skip that download entirely —
+# without this, a fresh build (no local ms-playwright cache to reuse) wastes build time
+# fetching a browser and adds a network dependency this step doesn't actually need.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
