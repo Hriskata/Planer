@@ -16,12 +16,13 @@
   import WeekCalendar from './WeekCalendar.svelte';
   import MonthCalendar from './MonthCalendar.svelte';
   import BacklogColumn from './BacklogColumn.svelte';
-  import { extractClients } from './search.js';
+  import { extractClients, taskMatchesFilters, hasActiveFilters } from './search.js';
   import { POST_TYPES } from './postTypes.js';
   import { PRIORITIES, priorityLabel } from './priorities.js';
   import { theme, toggleTheme } from './theme.js';
   import SettingsMenu from './SettingsMenu.svelte';
   import CalendarSwitcher from './CalendarSwitcher.svelte';
+  import LibraryPage from './LibraryPage.svelte';
   import Icon from './Icon.svelte';
   import {
     getDragState,
@@ -30,6 +31,10 @@
     handlePointerCancel,
   } from './dragDrop.svelte.js';
 
+  // 'calendar' = the usual day/week/month task views; 'library' = the branding-assets
+  // subpage — both live under the same header (CalendarSwitcher included), so switching
+  // pages doesn't lose which calendar you're currently looking at.
+  let page = $state('calendar');
   let viewMode = $state('day'); // 'day' | 'week' | 'month'
   let currentDate = $state(todayStr());
   let tasks = $state([]);
@@ -203,7 +208,12 @@
 />
 
 <header>
-  <h1>Планер</h1>
+  <div class="nav-left">
+    <button class="brand" onclick={() => (page = 'calendar')}>Планер</button>
+    <button class="nav-link" class:active={page === 'library'} onclick={() => (page = 'library')}>
+      Библиотеки
+    </button>
+  </div>
   <div class="header-actions">
     <CalendarSwitcher
       ownUsername={$auth.user.username}
@@ -223,6 +233,9 @@
   </div>
 </header>
 
+{#if page === 'library'}
+  <LibraryPage {activeCalendarOwnerId} myUserId={$auth.user.id} />
+{:else}
 <nav class="controls">
   <div class="view-toggle">
     <button class:active={viewMode === 'day'} onclick={() => (viewMode = 'day')}>Ден</button>
@@ -314,7 +327,13 @@
             }}
           >
             {#each tasks as task (task.id)}
-              <PostTile {task} onEdit={openEditForm} onToggle={handleToggleStatus} {readOnly} />
+              <PostTile
+                {task}
+                dimmed={hasActiveFilters(activeFilters) && !taskMatchesFilters(task, activeFilters)}
+                onEdit={openEditForm}
+                onToggle={handleToggleStatus}
+                {readOnly}
+              />
             {:else}
               <p class="empty">Няма задачи за този ден.</p>
             {/each}
@@ -364,6 +383,7 @@
 {#if !readOnly}
   <button class="fab" onclick={openNewTaskForm} aria-label="Нова задача">+</button>
 {/if}
+{/if}
 
 {#if showForm}
   <!-- Keyed so switching from "edit task A" to "duplicate of task A" (which keeps
@@ -396,11 +416,38 @@
     background: var(--color-accent);
     color: white;
   }
-  header h1 {
+  .nav-left {
+    display: flex;
+    align-items: center;
+    gap: 1.4rem;
+  }
+  .brand {
     margin: 0;
+    padding: 0;
     font-size: 1.3rem;
     font-weight: 700;
     letter-spacing: -0.01em;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .nav-link {
+    background: none;
+    border: none;
+    padding: 0.2rem 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.75);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .nav-link:hover {
+    color: white;
+  }
+  .nav-link.active {
+    color: white;
+    border-bottom-color: white;
   }
   .header-actions {
     display: flex;

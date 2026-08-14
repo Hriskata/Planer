@@ -67,3 +67,25 @@ CREATE TABLE IF NOT EXISTS calendar_shares (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(owner_id, shared_email)
 );
+
+-- Асет библиотека: брандинг материали (лого, шрифтове, снимки, текстове...) по клиент.
+-- owner_id is whose library this belongs to (same "whose calendar" concept as tasks —
+-- anyone with calendar_shares access to owner_id can view/upload/download, see
+-- routes/library.js), uploaded_by is who actually added it, tracked separately because
+-- a shared collaborator may only delete their OWN uploads while the owner can delete
+-- anything in their own library (admin-style) — two different people, two different
+-- permissions, so one column can't cover both.
+CREATE TABLE IF NOT EXISTS library_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  uploaded_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client TEXT NOT NULL,
+  type TEXT NOT NULL,                       -- 'Лого' | 'Шрифт' | 'Снимка' | 'Текст' | 'Друго'
+  title TEXT NOT NULL,
+  file_path TEXT,                           -- e.g. '/uploads/<uuid>.png', NULL for text-only assets
+  text_content TEXT,                        -- NULL for file-based assets — exactly one of the two is set
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_assets_owner ON library_assets(owner_id);

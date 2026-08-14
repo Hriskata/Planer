@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { sendTaskCompletionEmail } = require('../email');
 const { EMAIL_RE } = require('../validators');
+const { resolveViewedOwnerId } = require('../calendarAccess');
 
 const router = express.Router();
 
@@ -27,32 +28,6 @@ const REDACTED_EMAIL_COLUMNS = `
 // this is keyed off req.user.id in both call sites below, not the task's own user_id.
 function getEmailSender(userId) {
   return db.prepare('SELECT id, email, email_app_password_enc FROM users WHERE id = ?').get(userId);
-}
-
-// Resolves "whose calendar is this request actually looking at" — the caller's own
-// (the default, no ?calendar= at all) or someone else's, if that owner has granted the
-// caller's own email full view access via calendar_shares (see routes/sharing.js).
-// Returns null when ?calendar= doesn't resolve to anything the caller may see, so the
-// route can 403 instead of silently falling back to "my own calendar" — a typo'd or
-// revoked id should never quietly show the wrong (but real) data.
-function resolveViewedOwnerId(req) {
-  const { calendar } = req.query;
-  if (calendar === undefined) return req.user.id;
-
-  const ownerId = Number(calendar);
-  if (!Number.isInteger(ownerId)) return null;
-  if (ownerId === req.user.id) return ownerId; // viewing "someone else's" own id is just your own calendar
-
-  // requireAuth only verifies the JWT's signature, not that the user row still exists
-  // (e.g. a dev DB reset while an old token is still cached in a browser) — `me` can
-  // genuinely be undefined here.
-  const me = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
-  if (!me?.email) return null;
-
-  const share = db
-    .prepare('SELECT id FROM calendar_shares WHERE owner_id = ? AND shared_email = ?')
-    .get(ownerId, me.email);
-  return share ? ownerId : null;
 }
 
 function validateTaskInput(body, { partial = false } = {}) {

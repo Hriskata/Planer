@@ -175,6 +175,41 @@ export function getSharedWithMe() {
   return request('/sharing/shared-with-me');
 }
 
+// Library assets aren't cached offline (unlike tasks) — it's a secondary, occasionally
+// used feature, so a plain request() with its normal error-on-failure behavior is fine.
+export function getLibraryAssets(calendarOwnerId) {
+  const params = calendarSuffix(calendarOwnerId);
+  return request(`/library${params ? `?${params}` : ''}`);
+}
+
+// Same multipart reasoning as uploadImage() — Content-Type must be left for the browser
+// to set (with its boundary), not forced to application/json like request() does.
+// `file` is optional (text-only assets have none); everything else is a plain string.
+export async function uploadLibraryAsset({ client, type, title, file, textContent }, calendarOwnerId) {
+  const current = get(auth);
+  const formData = new FormData();
+  formData.append('client', client);
+  formData.append('type', type);
+  formData.append('title', title);
+  if (textContent) formData.append('text_content', textContent);
+  if (file) formData.append('file', file);
+
+  const headers = {};
+  if (current?.token) headers.Authorization = `Bearer ${current.token}`;
+
+  const params = calendarSuffix(calendarOwnerId);
+  const res = await fetch(`/api/library${params ? `?${params}` : ''}`, { method: 'POST', body: formData, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || (body.errors || []).join(', ') || `Грешка ${res.status}`);
+  }
+  return res.json();
+}
+
+export function deleteLibraryAsset(id) {
+  return request(`/library/${id}`, { method: 'DELETE' });
+}
+
 export function createTask(data) {
   return request('/tasks', { method: 'POST', body: JSON.stringify(data) });
 }

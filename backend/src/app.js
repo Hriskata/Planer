@@ -11,6 +11,7 @@ const uploadsRouter = require('./routes/uploads');
 const pushRouter = require('./routes/push');
 const accountRouter = require('./routes/account');
 const sharingRouter = require('./routes/sharing');
+const libraryRouter = require('./routes/library');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/uploads', requireAuth, uploadsRouter);
 app.use('/api/push', requireAuth, pushRouter);
 app.use('/api/account', requireAuth, accountRouter);
 app.use('/api/sharing', requireAuth, sharingRouter);
+app.use('/api/library', requireAuth, libraryRouter);
 
 // Uploaded task images. Deliberately public (not behind requireAuth) — a plain <img
 // src> can't attach the JWT header, and filenames are random UUIDs, not guessable.
