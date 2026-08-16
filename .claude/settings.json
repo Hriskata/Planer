@@ -42,7 +42,10 @@
       "Bash(node -e \"require\\('http'\\).get\\('http://localhost:9999/api/auth/google-client-id', \\(r\\) => { console.log\\('status:', r.statusCode\\); process.exit\\(r.statusCode === 200 ? 0 : 1\\); }\\).on\\('error', \\(e\\) => { console.log\\('error:', e.message\\); process.exit\\(1\\); }\\)\")",
       "Bash(npm view *)",
       "Bash(node --test test/taskSeries.test.js)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(docker info *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/auth/google-client-id)"
     ]
   }
 }

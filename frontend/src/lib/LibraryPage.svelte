@@ -351,9 +351,11 @@
 
 <div class="library">
   <aside class="client-sidebar">
-    <button class="client-item" class:active={selectedClient === ''} onclick={() => (selectedClient = '')}>
-      Всички клиенти
-    </button>
+    <div class="client-row">
+      <button class="client-item" class:active={selectedClient === ''} onclick={() => (selectedClient = '')}>
+        Всички клиенти
+      </button>
+    </div>
     {#each clients as client (client)}
       <div class="client-row">
         <button class="client-item" class:active={selectedClient === client} onclick={() => (selectedClient = client)}>
