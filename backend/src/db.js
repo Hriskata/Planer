@@ -33,6 +33,7 @@ for (const [column, type] of [
   ['email_subject', 'TEXT'],
   ['email_body', 'TEXT'],
   ['email_sent', 'INTEGER NOT NULL DEFAULT 0'],
+  ['series_id', 'INTEGER REFERENCES task_series(id) ON DELETE SET NULL'],
 ]) {
   if (!taskColumns.includes(column)) {
     db.exec(`ALTER TABLE tasks ADD COLUMN ${column} ${type}`);
@@ -76,7 +77,8 @@ for (const [column, type] of [
 // explicit column list (not SELECT *) so it doesn't depend on old/new column order
 // matching — but that means every column on `tasks` MUST be listed in all three of
 // CREATE TABLE/INSERT/SELECT below, or it's silently dropped along with its data (this
-// previously happened to `platform`, added after this migration was written).
+// previously happened to `platform`, added after this migration was written — `series_id`
+// is deliberately included below to not repeat that mistake a third time).
 const dateColumn = db.prepare("PRAGMA table_info(tasks)").all().find((c) => c.name === 'date');
 if (dateColumn?.notnull) {
   db.exec('BEGIN');
@@ -103,18 +105,19 @@ if (dateColumn?.notnull) {
         email_subject TEXT,
         email_body TEXT,
         email_sent INTEGER NOT NULL DEFAULT 0,
+        series_id INTEGER REFERENCES task_series(id) ON DELETE SET NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       INSERT INTO tasks_new (
         id, user_id, title, notes, date, time, status, shared,
         color, client, post_type, platform, priority, image_path, reminder_sent,
-        email_on_complete, email_to, email_subject, email_body, email_sent, created_at, updated_at
+        email_on_complete, email_to, email_subject, email_body, email_sent, series_id, created_at, updated_at
       )
       SELECT
         id, user_id, title, notes, date, time, status, shared,
         color, client, post_type, platform, priority, image_path, reminder_sent,
-        email_on_complete, email_to, email_subject, email_body, email_sent, created_at, updated_at
+        email_on_complete, email_to, email_subject, email_body, email_sent, series_id, created_at, updated_at
       FROM tasks;
       DROP TABLE tasks;
       ALTER TABLE tasks_new RENAME TO tasks;

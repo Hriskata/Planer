@@ -23,6 +23,7 @@
   import SettingsMenu from './SettingsMenu.svelte';
   import CalendarSwitcher from './CalendarSwitcher.svelte';
   import LibraryPage from './LibraryPage.svelte';
+  import HistoryFeedPage from './HistoryFeedPage.svelte';
   import Icon from './Icon.svelte';
   import {
     getDragState,
@@ -219,6 +220,9 @@
     <button class="nav-link" class:active={page === 'library'} onclick={() => (page = 'library')}>
       Библиотеки
     </button>
+    <button class="nav-link" class:active={page === 'history'} onclick={() => (page = 'history')}>
+      Активност
+    </button>
   </div>
   <div class="header-actions">
     <CalendarSwitcher
@@ -241,6 +245,8 @@
 
 {#if page === 'library'}
   <LibraryPage {activeCalendarOwnerId} myUserId={$auth.user.id} />
+{:else if page === 'history'}
+  <HistoryFeedPage {activeCalendarOwnerId} />
 {:else}
 <nav class="controls">
   <div class="view-toggle">

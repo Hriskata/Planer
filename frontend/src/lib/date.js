@@ -45,6 +45,15 @@ export function weekdayNameShort(dateStr) {
   return WEEKDAY_NAMES_SHORT[new Date(y, m - 1, d).getDay()];
 }
 
+// ISO weekday: 1=Monday..7=Sunday (Date#getDay() is 0=Sunday..6=Saturday) — matches
+// backend/src/dateUtils.js's isoWeekday exactly, used by the "Повтаря се" weekly
+// recurrence picker in TaskForm.svelte.
+export function isoWeekday(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const day = new Date(y, m - 1, d).getDay();
+  return ((day + 6) % 7) + 1;
+}
+
 export function displayDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return `${d}.${String(m).padStart(2, '0')}.${y}`;

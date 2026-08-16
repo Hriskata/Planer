@@ -12,6 +12,8 @@ const pushRouter = require('./routes/push');
 const accountRouter = require('./routes/account');
 const sharingRouter = require('./routes/sharing');
 const libraryRouter = require('./routes/library');
+const shareLinksRouter = require('./routes/shareLinks');
+const publicShareRouter = require('./routes/publicShare');
 
 const app = express();
 
@@ -56,6 +58,10 @@ app.use('/api/push', requireAuth, pushRouter);
 app.use('/api/account', requireAuth, accountRouter);
 app.use('/api/sharing', requireAuth, sharingRouter);
 app.use('/api/library', requireAuth, libraryRouter);
+app.use('/api/share-links', requireAuth, shareLinksRouter);
+// Public client calendar links — deliberately NOT behind requireAuth, same reasoning
+// as /api/auth: the token itself (see routes/publicShare.js) is the whole point.
+app.use('/api/public-share', publicShareRouter);
 
 // Uploaded task images. Deliberately public (not behind requireAuth) — a plain <img
 // src> can't attach the JWT header, and filenames are random UUIDs, not guessable.

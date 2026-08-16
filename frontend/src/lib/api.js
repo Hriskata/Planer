@@ -259,6 +259,38 @@ export function deleteLibraryAsset(id) {
   return request(`/library/${id}`, { method: 'DELETE' });
 }
 
+// My outgoing client share links (Библиотеки's "Сподели с клиента" action).
+export function getMyShareLinks() {
+  return request('/share-links');
+}
+
+export function createShareLink(client) {
+  return request('/share-links', { method: 'POST', body: JSON.stringify({ client }) });
+}
+
+export function revokeShareLink(id) {
+  return request(`/share-links/${id}`, { method: 'DELETE' });
+}
+
+// Public, unauthenticated — powers SharedCalendarPage.svelte (/share/:token). Deliberately
+// NOT going through request(): that helper always reads the auth store and would attach a
+// Bearer header if the visitor happens to be logged in on that browser, which is harmless
+// server-side (publicShare.js never checks it) but conceptually wrong for a route that must
+// behave identically whether or not anyone is logged in. Not offline-cached either — same
+// reasoning as getTasksByClient, plus caching under a guessable-ish key risks a stale/wrong
+// client's tasks surviving the link's revocation.
+export async function getPublicShareLink(token) {
+  const res = await fetch(`/api/public-share/${encodeURIComponent(token)}`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function getPublicShareTasks(token) {
+  const res = await fetch(`/api/public-share/${encodeURIComponent(token)}/tasks`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
 export function createTask(data) {
   return request('/tasks', { method: 'POST', body: JSON.stringify(data) });
 }
@@ -267,6 +299,34 @@ export function updateTask(id, data) {
   return request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 
+// Bulk-edit "this and all following" / "the entire series" (see SeriesScopeDialog.svelte).
+// `id` is the anchor occurrence the user was looking at when they chose the scope;
+// "just this one" never calls this — it goes through updateTask() with series_id: null.
+export function updateSeriesScope(id, scope, data) {
+  return request(`/tasks/${id}/series?scope=${scope}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+// Bulk-delete "this and all following" / "the entire series"; "just this one" uses the
+// plain deleteTask() below.
+export function deleteSeriesScope(id, scope) {
+  return request(`/tasks/${id}/series?scope=${scope}`, { method: 'DELETE' });
+}
+
 export function deleteTask(id) {
   return request(`/tasks/${id}`, { method: 'DELETE' });
+}
+
+// Audit history for one task (TaskForm's "История" button). Not offline-cached — same
+// occasional-feature reasoning as getTasksByClient/library above.
+export function getTaskHistory(id) {
+  return request(`/tasks/${id}/history`);
+}
+
+// Global "Скорошна активност" feed (HistoryFeedPage.svelte) — before is a history row
+// id (keyset pagination cursor), not a timestamp; omit for the first/most-recent page.
+export function getHistoryFeed({ calendarOwnerId, before, limit } = {}) {
+  const params = [calendarSuffix(calendarOwnerId), before && `before=${before}`, limit && `limit=${limit}`]
+    .filter(Boolean)
+    .join('&');
+  return request(`/tasks/history${params ? `?${params}` : ''}`);
 }

@@ -1,11 +1,32 @@
 <script>
   import { untrack } from 'svelte';
-  import { createTask, updateTask, deleteTask, uploadImage, getEmailSenderSettings } from './api.js';
+  import {
+    createTask,
+    updateTask,
+    deleteTask,
+    updateSeriesScope,
+    deleteSeriesScope,
+    uploadImage,
+    getEmailSenderSettings,
+  } from './api.js';
   import { POST_TYPES } from './postTypes.js';
   import { PRIORITIES, priorityLabel } from './priorities.js';
   import { PLATFORMS, PLATFORM_OTHER } from './platforms.js';
+  import { isoWeekday } from './date.js';
   import Icon from './Icon.svelte';
   import { trapFocus } from './modalA11y.js';
+  import SeriesScopeDialog from './SeriesScopeDialog.svelte';
+  import TaskHistoryDialog from './TaskHistoryDialog.svelte';
+
+  const WEEKDAY_OPTIONS = [
+    { value: 1, label: 'Пон' },
+    { value: 2, label: 'Вт' },
+    { value: 3, label: 'Ср' },
+    { value: 4, label: 'Чет' },
+    { value: 5, label: 'Пет' },
+    { value: 6, label: 'Съб' },
+    { value: 7, label: 'Нед' },
+  ];
 
   let {
     task = null,
@@ -73,6 +94,22 @@
   let saving = $state(false);
   let error = $state('');
 
+  // "Повтаря се" — only offered when CREATING (task === null, see the markup below);
+  // editing an existing occurrence goes through showScopeDialog instead (this/following/
+  // all), not this section. Defaults to the anchor date's own weekday, since that's the
+  // day the series is being scheduled FROM — the least-surprising starting selection.
+  let recurrenceEnabled = $state(false);
+  let recurrenceType = $state('weekly');
+  let recurrenceWeekdays = $state(untrack(() => (date ? [isoWeekday(date)] : [])));
+  let recurrenceUntil = $state('');
+
+  // Set when editing an occurrence that has task.series_id — intercepts handleSubmit/
+  // handleDelete below instead of calling updateTask/deleteTask directly, see
+  // handleScopedAction. null = closed.
+  let showScopeDialog = $state(null); // null | { action: 'save' | 'delete' }
+
+  let showHistory = $state(false);
+
   // "Изпрати имейл при завършване" silently no-ops server-side if the account has no
   // Gmail App Password configured (see backend/src/email.js) — nothing in the task's
   // own save/complete flow would ever surface that, so the checkbox itself has to warn
@@ -127,11 +164,47 @@
     if (hour === '') minute = '';
   });
 
+  function buildPayload() {
+    const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
+    const payload = {
+      title,
+      date: date || null,
+      time,
+      notes: notes || null,
+      shared,
+      client: client || null,
+      post_type: postType || null,
+      platform: platform === PLATFORM_OTHER ? platformOther.trim() || null : platform || null,
+      priority: priority !== '' ? Number(priority) : null,
+      image_path: imagePath,
+      status: done ? 'done' : 'pending',
+      email_on_complete: emailOnComplete,
+      email_to: emailOnComplete ? emailTo.trim() : null,
+      email_subject: emailOnComplete ? emailSubject || null : null,
+      email_body: emailOnComplete ? emailBody || null : null,
+    };
+    if (!task && recurrenceEnabled) {
+      payload.recurrence = {
+        type: recurrenceType,
+        weekdays: recurrenceType === 'weekly' ? recurrenceWeekdays : undefined,
+        until: recurrenceUntil,
+      };
+    }
+    return payload;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     error = '';
     if (emailOnComplete && !emailTo.trim()) {
       error = 'Имейл адресът е задължителен, ако имейл при завършване е включено.';
+      return;
+    }
+    // Editing one occurrence of a recurring series needs a this/following/all choice
+    // before anything is actually saved — handleScopedAction does the real save once
+    // the user picks.
+    if (task?.series_id) {
+      showScopeDialog = { action: 'save' };
       return;
     }
     saving = true;
@@ -142,24 +215,7 @@
         imagePath = result.path;
         pendingImageFile = null;
       }
-      const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
-      const payload = {
-        title,
-        date: date || null,
-        time,
-        notes: notes || null,
-        shared,
-        client: client || null,
-        post_type: postType || null,
-        platform: platform === PLATFORM_OTHER ? platformOther.trim() || null : platform || null,
-        priority: priority !== '' ? Number(priority) : null,
-        image_path: imagePath,
-        status: done ? 'done' : 'pending',
-        email_on_complete: emailOnComplete,
-        email_to: emailOnComplete ? emailTo.trim() : null,
-        email_subject: emailOnComplete ? emailSubject || null : null,
-        email_body: emailOnComplete ? emailBody || null : null,
-      };
+      const payload = buildPayload();
       if (task) {
         await updateTask(task.id, payload);
       } else {
@@ -174,6 +230,13 @@
   }
 
   async function handleDelete() {
+    // SeriesScopeDialog's own "Само тази" button IS the confirmation for a recurring
+    // occurrence — no native confirm() on top of it (that would double-confirm, unlike
+    // the "Тази и следващите"/"Всички" buttons which have no separate confirm either).
+    if (task.series_id) {
+      showScopeDialog = { action: 'delete' };
+      return;
+    }
     if (!confirm(`Изтриване на "${task.title}"?`)) return;
     error = '';
     saving = true;
@@ -182,6 +245,39 @@
       onSaved();
     } catch (err) {
       error = err.message;
+      saving = false;
+    }
+  }
+
+  async function handleScopedAction(action, scope) {
+    showScopeDialog = null;
+    error = '';
+    saving = true;
+    try {
+      if (action === 'save') {
+        if (pendingImageFile) {
+          const result = await uploadImage(pendingImageFile);
+          imagePath = result.path;
+          pendingImageFile = null;
+        }
+        const payload = buildPayload();
+        if (scope === 'this') {
+          // Editing "just this one" also detaches it from the series — once an
+          // occurrence has been made uniquely different, it's no longer part of the
+          // pattern for future bulk edits (same model as Google Calendar).
+          await updateTask(task.id, { ...payload, series_id: null });
+        } else {
+          await updateSeriesScope(task.id, scope, payload);
+        }
+      } else if (scope === 'this') {
+        await deleteTask(task.id);
+      } else {
+        await deleteSeriesScope(task.id, scope);
+      }
+      onSaved();
+    } catch (err) {
+      error = err.message;
+    } finally {
       saving = false;
     }
   }
@@ -196,6 +292,20 @@
     use:trapFocus={{ onEscape: onCancel }}
   >
     <h2 id="task-form-title">{readOnly ? 'Преглед на пост' : task ? 'Редакция на пост' : 'Нов пост'}</h2>
+
+    {#if task?.series_id}
+      <p class="series-indicator">
+        <Icon name="repeat" size="0.9rem" />
+        Част от повтаряща се поредица
+      </p>
+    {/if}
+
+    {#if task}
+      <button type="button" class="history-trigger" onclick={() => (showHistory = true)}>
+        <Icon name="clock" size="0.9rem" />
+        История
+      </button>
+    {/if}
 
     <!-- disabled on the fieldset, not every single field — HTML disables every
          descendant input/select/textarea/button in one place instead of threading
@@ -265,6 +375,43 @@
         </div>
       </label>
     </div>
+
+    {#if !task}
+      <div class="section-divider"></div>
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={recurrenceEnabled} disabled={!date} />
+        Повтаря се
+      </label>
+      {#if !date}
+        <p class="field-hint">Нужна е дата, за да се повтаря постът.</p>
+      {/if}
+      {#if recurrenceEnabled}
+        <div class="recurrence-fields">
+          <label>
+            Тип повторение
+            <select bind:value={recurrenceType}>
+              <option value="daily">Всеки ден</option>
+              <option value="weekly">Всяка седмица</option>
+              <option value="monthly">Всеки месец (същата дата)</option>
+            </select>
+          </label>
+          {#if recurrenceType === 'weekly'}
+            <div class="weekday-picker">
+              {#each WEEKDAY_OPTIONS as wd (wd.value)}
+                <label class="weekday-chip">
+                  <input type="checkbox" value={wd.value} bind:group={recurrenceWeekdays} />
+                  {wd.label}
+                </label>
+              {/each}
+            </div>
+          {/if}
+          <label>
+            Повтаря се до
+            <input type="date" bind:value={recurrenceUntil} min={date} required={recurrenceEnabled} />
+          </label>
+        </div>
+      {/if}
+    {/if}
 
     <label>
       Копи
@@ -352,6 +499,18 @@
   </form>
 </div>
 
+{#if showScopeDialog}
+  <SeriesScopeDialog
+    action={showScopeDialog.action}
+    onChoose={(scope) => handleScopedAction(showScopeDialog.action, scope)}
+    onCancel={() => (showScopeDialog = null)}
+  />
+{/if}
+
+{#if showHistory}
+  <TaskHistoryDialog {task} onClose={() => (showHistory = false)} />
+{/if}
+
 <style>
   .overlay {
     position: fixed;
@@ -438,6 +597,62 @@
     height: 1px;
     background: var(--color-border);
     margin: 0.1rem 0;
+  }
+  .series-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: -0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+  .history-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    align-self: flex-start;
+    margin: -0.4rem 0 0;
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .history-trigger:hover {
+    color: var(--color-text);
+  }
+  .field-hint {
+    font-size: 0.8rem;
+    color: var(--color-text-faint, var(--color-text-muted));
+    margin: -0.5rem 0 0;
+    font-weight: normal;
+  }
+  .recurrence-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    background: var(--color-surface-alt);
+    border-radius: 12px;
+  }
+  .weekday-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .weekday-chip {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: normal;
+    font-size: 0.85rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: 999px;
+    padding: 0.3rem 0.7rem;
   }
   input,
   textarea,

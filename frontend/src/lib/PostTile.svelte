@@ -2,6 +2,7 @@
   import { colorForPostType } from './colors.js';
   import { colorForPriority } from './priorities.js';
   import { handlePointerDown, getDragState, consumeSuppressedClick } from './dragDrop.svelte.js';
+  import Icon from './Icon.svelte';
 
   // Used identically everywhere a post renders (week view, day view, the backlog
   // column) so the same content always looks the same regardless of where it appears.
@@ -57,6 +58,11 @@
            left-edge stripe above already carries the color signal; recoloring the text
            too would fight the post-type background instead of just accenting it. -->
       <span class="priority-badge" title={`Приоритет ${task.priority}`}>P{task.priority}</span>
+    {/if}
+    {#if task.series_id}
+      <span class="repeat-badge" title="Част от повтаряща се поредица">
+        <Icon name="repeat" size="0.7rem" />
+      </span>
     {/if}
     <button
       type="button"
@@ -149,6 +155,11 @@
   .priority-badge {
     font-size: 0.65rem;
     font-weight: 700;
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+  .repeat-badge {
+    display: inline-flex;
     flex-shrink: 0;
     opacity: 0.85;
   }

@@ -5,8 +5,13 @@
 // aria-modal="true"` on the actual dialog element (this action only handles focus/
 // keyboard behavior, not ARIA attributes — those stay in the markup since they don't
 // change at runtime).
+// :not(:disabled) — the pseudo-class, not the [disabled] attribute selector — on
+// purpose: a control inside a disabled <fieldset> (see TaskForm's readOnly mode) is
+// functionally disabled without carrying its own `disabled` attribute, so [disabled]
+// alone misses it. :disabled correctly reflects that inherited state, matching what
+// the browser itself uses to decide whether .focus() on the element is a no-op.
 const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 function focusableIn(node) {
   return Array.from(node.querySelectorAll(FOCUSABLE_SELECTOR)).filter(

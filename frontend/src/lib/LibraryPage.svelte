@@ -5,12 +5,15 @@
     deleteLibraryAsset,
     getTaskClients,
     getTasksByClient,
+    createShareLink,
+    revokeShareLink,
   } from './api.js';
   import { extractClients } from './search.js';
   import { ASSET_TYPES, assetTypeIsText, assetTypeIsColor, sortAssetTypeLabels } from './libraryTypes.js';
   import { todayStr, addMonths, getMonthGridDates, monthLabel } from './date.js';
   import TaskForm from './TaskForm.svelte';
   import MonthCalendar from './MonthCalendar.svelte';
+  import Icon from './Icon.svelte';
   import { trapFocus } from './modalA11y.js';
 
   // activeCalendarOwnerId: null = your own library; otherwise the owner id of a
@@ -49,6 +52,15 @@
   // Reference date for the Постове tab's own month calendar — independent of Планер's
   // main calendar (a different page, a different "which month am I looking at").
   let libraryDate = $state(todayStr());
+
+  // "Сподели с клиента" modal state — a public, unauthenticated read-only calendar link
+  // scoped to exactly one client (see routes/publicShare.js).
+  let shareModalClient = $state(null); // null = closed, otherwise the client name
+  let shareLink = $state(null);
+  let shareLoading = $state(false);
+  let shareError = $state('');
+  let shareCopied = $state(false);
+  let shareRevoked = $state(false);
 
   async function load() {
     loading = true;
@@ -220,6 +232,51 @@
     return null;
   }
 
+  async function openShareModal(client) {
+    shareModalClient = client;
+    shareLink = null;
+    shareError = '';
+    shareCopied = false;
+    shareRevoked = false;
+    shareLoading = true;
+    try {
+      shareLink = await createShareLink(client);
+    } catch (err) {
+      shareError = err.message;
+    } finally {
+      shareLoading = false;
+    }
+  }
+
+  function closeShareModal() {
+    shareModalClient = null;
+  }
+
+  function shareUrl() {
+    return `${window.location.origin}/share/${shareLink.token}`;
+  }
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl());
+      shareCopied = true;
+    } catch {
+      shareError = 'Копирането не бе възможно — избери и копирай линка ръчно.';
+    }
+  }
+
+  async function handleRevokeShareLink() {
+    if (!confirm('Прекратяване на достъпа за този линк? Старият линк спира да работи веднага.')) return;
+    shareError = '';
+    try {
+      await revokeShareLink(shareLink.id);
+      shareLink = null;
+      shareRevoked = true;
+    } catch (err) {
+      shareError = err.message;
+    }
+  }
+
   // --- Upload form state ---
   let formClient = $state('');
   let formType = $state(ASSET_TYPES[0]);
@@ -298,9 +355,16 @@
       Всички клиенти
     </button>
     {#each clients as client (client)}
-      <button class="client-item" class:active={selectedClient === client} onclick={() => (selectedClient = client)}>
-        {client}
-      </button>
+      <div class="client-row">
+        <button class="client-item" class:active={selectedClient === client} onclick={() => (selectedClient = client)}>
+          {client}
+        </button>
+        {#if activeCalendarOwnerId === null}
+          <button class="client-share-btn" onclick={() => openShareModal(client)} aria-label={`Сподели с ${client}`}>
+            <Icon name="share-2" size="0.85rem" />
+          </button>
+        {/if}
+      </div>
     {/each}
     {#if clients.length === 0 && !loading}
       <p class="sidebar-empty">Все още няма клиенти.</p>
@@ -484,6 +548,48 @@
       </div>
     </div>
   {/if}
+
+  {#if shareModalClient}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-backdrop" onclick={closeShareModal}>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="modal"
+        tabindex="-1"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-modal-title"
+        use:trapFocus={{ onEscape: closeShareModal }}
+      >
+        <h2 id="share-modal-title">Линк за {shareModalClient}</h2>
+        {#if shareLoading}
+          <p class="empty">Зареждане...</p>
+        {:else if shareLink}
+          <p class="field-hint">
+            Всеки с този линк вижда само постовете на "{shareModalClient}", без логин и без право на редакция.
+          </p>
+          <label>
+            Линк
+            <input type="text" readonly value={shareUrl()} onclick={(e) => e.target.select()} />
+          </label>
+          <div class="share-actions">
+            <button type="button" onclick={copyShareLink}>Копирай</button>
+            {#if shareCopied}<span class="share-copied">Копирано.</span>{/if}
+          </div>
+          <button type="button" class="share-revoke" onclick={handleRevokeShareLink}>Премахни линка</button>
+        {:else if shareRevoked}
+          <p class="field-hint">Линкът е премахнат — старият вече не работи.</p>
+          <button type="button" onclick={() => openShareModal(shareModalClient)}>Генерирай нов линк</button>
+        {/if}
+        {#if shareError}<p class="error" role="alert">{shareError}</p>{/if}
+        <div class="form-actions">
+          <button type="button" class="secondary" onclick={closeShareModal}>Затвори</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -518,7 +624,14 @@
     min-height: 0;
     overflow-y: auto;
   }
+  .client-row {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+  }
   .client-item {
+    flex: 1;
+    min-width: 0;
     background: none;
     border: none;
     text-align: left;
@@ -527,6 +640,25 @@
     font-size: 0.9rem;
     color: var(--color-text);
     cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .client-share-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0.4rem;
+    border-radius: 6px;
+    color: var(--color-text-faint);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .client-share-btn:hover {
+    background: var(--color-accent-tint);
+    color: var(--color-accent);
   }
   .client-item:hover {
     background: var(--color-accent-tint);
@@ -698,6 +830,33 @@
     font-size: 0.8rem;
     color: var(--color-text-faint);
     margin: -0.25rem 0 0;
+  }
+  .share-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .share-actions button {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    border: none;
+    background: var(--color-accent);
+    color: white;
+    cursor: pointer;
+  }
+  .share-copied {
+    font-size: 0.8rem;
+    color: var(--color-success);
+  }
+  .share-revoke {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    color: var(--color-danger);
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0;
   }
   .asset-file {
     color: var(--color-accent);

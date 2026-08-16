@@ -48,6 +48,20 @@
     <polyline points="22 4 12 14.01 9 11.01" />
   {:else if name === 'chevron-down'}
     <polyline points="6 9 12 15 18 9" />
+  {:else if name === 'share-2'}
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  {:else if name === 'repeat'}
+    <polyline points="17 1 21 5 17 9" />
+    <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+    <polyline points="7 23 3 19 7 15" />
+    <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+  {:else if name === 'clock'}
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
   {/if}
 </svg>
 

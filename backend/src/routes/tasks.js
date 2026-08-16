@@ -4,12 +4,18 @@ const { sendTaskCompletionEmail } = require('../email');
 const { EMAIL_RE } = require('../validators');
 const { resolveViewedOwnerId } = require('../calendarAccess');
 const { deleteUploadedFile } = require('../uploadStorage');
+const { addDays, addMonths, isoWeekday } = require('../dateUtils');
 
 const router = express.Router();
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 const VALID_STATUS = ['pending', 'done'];
+const RECURRENCE_TYPES = ['daily', 'weekly', 'monthly'];
+// Sanity/abuse cap, not a performance one — node:sqlite handles a few hundred
+// synchronous inserts trivially. 366 covers a full daily year with no friction, while
+// firmly blocking a mistaken decades-long daily series (e.g. a stale default `until`).
+const MAX_SERIES_OCCURRENCES = 366;
 
 // email_on_complete/email_to/email_subject/email_body/email_sent are the task OWNER's
 // private automation config (who gets emailed, with what message) — redacted to
@@ -38,6 +44,62 @@ function getEmailSender(userId) {
 function imagePathStillReferenced(imagePath, excludeTaskId) {
   const row = db.prepare('SELECT 1 FROM tasks WHERE image_path = ? AND id != ? LIMIT 1').get(imagePath, excludeTaskId);
   return Boolean(row);
+}
+
+// Which columns count as a meaningful, user-facing edit for the audit log — deliberately
+// excludes reminder_sent/email_sent/updated_at/created_at/series_id/user_id, which are
+// internal bookkeeping/side-effects rather than something a person consciously changed.
+const HISTORY_DIFF_FIELDS = [
+  'title', 'notes', 'date', 'time', 'status', 'client', 'post_type',
+  'platform', 'priority', 'image_path', 'shared',
+  'email_on_complete', 'email_to', 'email_subject', 'email_body',
+];
+
+// Field-level diff between a task's pre-image and the partial `data` about to be applied
+// — only fields actually present in `data` AND actually different are included, so a
+// no-op save (open + Save with nothing changed) produces an empty array. series_id gets
+// its own pseudo-field instead of joining the generic loop above: the raw numeric id
+// means nothing to a reader, only the "detached from its series" transition does.
+function diffForHistory(task, data) {
+  const changes = [];
+  for (const field of HISTORY_DIFF_FIELDS) {
+    if (field in data && data[field] !== task[field]) {
+      changes.push({ field, old: task[field] ?? null, new: data[field] ?? null });
+    }
+  }
+  if ('series_id' in data && data.series_id === null && task.series_id !== null) {
+    changes.push({ field: 'series', old: 'series', new: 'standalone' });
+  }
+  return changes;
+}
+
+function recordHistory(taskId, ownerId, actorId, action, title, changes = null) {
+  db.prepare(
+    `INSERT INTO task_history (task_id, owner_id, actor_id, action, task_title, changes)
+     VALUES (@taskId, @ownerId, @actorId, @action, @title, @changes)`
+  ).run({
+    taskId,
+    ownerId,
+    actorId,
+    action,
+    title,
+    changes: changes && changes.length ? JSON.stringify(changes) : null,
+  });
+}
+
+// Whether the caller may see a given task's audit history — mirrors the visibility rules
+// baked into GET /'s SQL WHERE clause (own tasks, anyone's shared=1 tasks, or a whole
+// calendar granted via calendar_shares), but expressed per-task instead of per-list since
+// there's no existing single-task GET route to piggyback on.
+function canViewTask(req, task) {
+  if (task.user_id === req.user.id) return true;
+  if (task.shared) return true;
+  const me = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
+  if (!me?.email) return false;
+  const share = db
+    .prepare('SELECT id FROM calendar_shares WHERE owner_id = ? AND shared_email = ?')
+    .get(task.user_id, me.email);
+  return Boolean(share);
 }
 
 function validateTaskInput(body, { partial = false } = {}) {
@@ -174,6 +236,17 @@ function validateTaskInput(body, { partial = false } = {}) {
     data.shared = 0;
   }
 
+  // Detaching a single occurrence from its recurring series (see PUT /:id/series for
+  // the "this and all following"/"entire series" bulk scopes instead) — re-attaching to
+  // an ARBITRARY series isn't supported, so only the literal value null is accepted.
+  if (body.series_id !== undefined) {
+    if (body.series_id !== null) {
+      errors.push('series_id може да е само null (премахване от поредица).');
+    } else {
+      data.series_id = null;
+    }
+  }
+
   // Cross-field: "send an email" only makes sense with a recipient. On a full create,
   // every field above already has a value (explicit or defaulted), so this can be
   // checked right here; a partial update may be touching neither field (leaving both at
@@ -184,6 +257,158 @@ function validateTaskInput(body, { partial = false } = {}) {
   }
 
   return { errors, data };
+}
+
+// Computes every occurrence date for a recurrence rule, string dates throughout
+// (YYYY-MM-DD sorts lexicographically identically to chronologically, same trick this
+// file's SQL already relies on for date >= @from AND date <= @to).
+function generateOccurrenceDates({ type, weekdays, startDate, until }) {
+  const dates = [];
+  if (type === 'daily') {
+    for (let d = startDate; d <= until; d = addDays(d, 1)) dates.push(d);
+  } else if (type === 'weekly') {
+    const wanted = new Set(weekdays);
+    for (let d = startDate; d <= until; d = addDays(d, 1)) {
+      if (wanted.has(isoWeekday(d))) dates.push(d);
+    }
+  } else if (type === 'monthly') {
+    // Each step computed as addMonths(startDate, i) — always from the ORIGINAL anchor,
+    // not addMonths(previous, 1) — so day-of-month clamping never compounds. E.g.
+    // starting Jan 31: addMonths(startDate,1) -> Feb 28, addMonths(startDate,2) -> Mar
+    // 31 (correctly recovers); iteratively clamping from the already-clamped Feb 28
+    // would wrongly drift to Mar 28 instead.
+    let d = startDate;
+    let i = 0;
+    while (d <= until) {
+      dates.push(d);
+      i += 1;
+      d = addMonths(startDate, i);
+    }
+  }
+  return dates;
+}
+
+// Validates a `recurrence` object from a create request against the task's own `date`
+// (the series' anchor/first occurrence). Mirrors validateTaskInput's { errors, ... }
+// shape. Returns occurrenceDates=null whenever errors is non-empty.
+function validateRecurrence(recurrence, taskDate) {
+  const errors = [];
+
+  if (!recurrence || typeof recurrence !== 'object') {
+    return { errors: ['recurrence трябва да е обект.'], occurrenceDates: null };
+  }
+  if (!RECURRENCE_TYPES.includes(recurrence.type)) {
+    errors.push(`recurrence.type трябва да е едно от: ${RECURRENCE_TYPES.join(', ')}.`);
+  }
+  if (typeof taskDate !== 'string' || !DATE_RE.test(taskDate)) {
+    errors.push('date е задължителна дата за повтаряща се задача.');
+  }
+  if (typeof recurrence.until !== 'string' || !DATE_RE.test(recurrence.until)) {
+    errors.push('recurrence.until трябва да е във формат YYYY-MM-DD.');
+  } else if (typeof taskDate === 'string' && DATE_RE.test(taskDate) && recurrence.until < taskDate) {
+    errors.push('recurrence.until трябва да е на или след date.');
+  }
+
+  let normalizedWeekdays = null;
+  if (recurrence.type === 'weekly') {
+    const weekdays = recurrence.weekdays;
+    if (!Array.isArray(weekdays) || weekdays.length === 0 || !weekdays.every((w) => Number.isInteger(w) && w >= 1 && w <= 7)) {
+      errors.push('recurrence.weekdays трябва да е непразен списък от цели числа 1-7.');
+    } else {
+      normalizedWeekdays = [...new Set(weekdays)];
+      if (typeof taskDate === 'string' && DATE_RE.test(taskDate) && !normalizedWeekdays.includes(isoWeekday(taskDate))) {
+        errors.push('Избраните дни от седмицата трябва да включват деня на началната дата.');
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { errors, occurrenceDates: null };
+  }
+
+  const occurrenceDates = generateOccurrenceDates({
+    type: recurrence.type,
+    weekdays: normalizedWeekdays,
+    startDate: taskDate,
+    until: recurrence.until,
+  });
+
+  if (occurrenceDates.length > MAX_SERIES_OCCURRENCES) {
+    return {
+      errors: [`Правилото генерира твърде много повторения (макс. ${MAX_SERIES_OCCURRENCES}) — стесни периода.`],
+      occurrenceDates: null,
+    };
+  }
+
+  return { errors: [], occurrenceDates, normalizedWeekdays };
+}
+
+// Applies already-validated partial `data` to one existing `task` row — the same
+// reminder_sent/email_sent state-machine transitions PUT /:id has always computed,
+// factored out so both the single-row route and the bulk PUT /:id/series route (which
+// calls this once per row in a loop) share one implementation. Does NOT itself send
+// email or delete the old image file — callers do that once, either immediately
+// (single-row) or batched after the whole loop (bulk, see PUT /:id/series). `actorId` is
+// who's making the change (always req.user.id at every call site today), threaded
+// through separately from task.user_id so the audit row can distinguish the two once
+// task sharing is ever more than read-only.
+function applyTaskUpdate(task, data, actorId) {
+  const merged = { ...task, ...data };
+  const historyChanges = diffForHistory(task, data);
+
+  // Rescheduling (a new date and/or time) means any already-sent 10-min-before
+  // reminder was for the old moment — reset it so the new one still gets a reminder.
+  const rescheduled = ('date' in data && data.date !== task.date) || ('time' in data && data.time !== task.time);
+  const reminderSent = rescheduled ? 0 : task.reminder_sent;
+
+  const becameUndone = task.status === 'done' && merged.status !== 'done';
+  // Un-completing resets the flag so a later re-completion sends again; completing
+  // sends (see shouldSendEmail below) and is recorded once that actually succeeds — a
+  // failed send (bad address, SMTP down) leaves it at 0 so the NEXT completion can
+  // retry, rather than silently marking a mail that never went out as sent.
+  const emailSent = becameUndone ? 0 : task.email_sent;
+  const shouldSendEmail = merged.status === 'done' && merged.email_on_complete && merged.email_to && !task.email_sent;
+  const seriesId = 'series_id' in data ? data.series_id : task.series_id;
+
+  db.prepare(
+    `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
+       status = @status, shared = @shared, client = @client,
+       post_type = @post_type, platform = @platform, priority = @priority, image_path = @image_path,
+       email_on_complete = @email_on_complete, email_to = @email_to,
+       email_subject = @email_subject, email_body = @email_body, email_sent = @emailSent,
+       reminder_sent = @reminderSent, series_id = @seriesId, updated_at = datetime('now')
+     WHERE id = @id`
+  ).run({
+    title: merged.title,
+    notes: merged.notes,
+    date: merged.date,
+    time: merged.time,
+    status: merged.status,
+    shared: merged.shared,
+    client: merged.client,
+    post_type: merged.post_type,
+    platform: merged.platform,
+    priority: merged.priority,
+    image_path: merged.image_path,
+    email_on_complete: merged.email_on_complete,
+    email_to: merged.email_to,
+    email_subject: merged.email_subject,
+    email_body: merged.email_body,
+    emailSent,
+    reminderSent,
+    seriesId,
+    id: task.id,
+  });
+
+  if (historyChanges.length > 0) {
+    recordHistory(task.id, task.user_id, actorId, 'updated', merged.title, historyChanges);
+  }
+
+  return {
+    updated: db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id),
+    shouldSendEmail,
+    oldImagePath: task.image_path,
+  };
 }
 
 // The user's own tasks + shared tasks from everyone else — or, with ?calendar=<ownerId>,
@@ -220,7 +445,7 @@ router.get('/', (req, res) => {
   // query text in JS) so both params are always bound, regardless of which side is true.
   const baseQuery = `
     SELECT id, user_id, title, notes, date, time, status, shared, color,
-           client, post_type, platform, priority, image_path, created_at, updated_at,
+           client, post_type, platform, priority, image_path, series_id, created_at, updated_at,
            ${REDACTED_EMAIL_COLUMNS}
     FROM tasks
     WHERE (
@@ -280,7 +505,7 @@ router.get('/unscheduled', (req, res) => {
   const rows = db
     .prepare(
       `SELECT id, user_id, title, notes, date, time, status, shared, color,
-              client, post_type, platform, priority, image_path, reminder_sent, created_at, updated_at,
+              client, post_type, platform, priority, image_path, series_id, reminder_sent, created_at, updated_at,
               ${REDACTED_EMAIL_COLUMNS}
        FROM tasks
        WHERE (
@@ -294,47 +519,124 @@ router.get('/unscheduled', (req, res) => {
   res.json(rows);
 });
 
+// Sends a completion email for one already-done row, fire-and-forget — shared by both
+// the single-task and the recurring-series create paths below (a directly-API-created
+// task, or any occurrence of a freshly-created series, could in principle already be
+// 'done'; the normal UI never does this, but a direct API call could).
+function sendCompletionEmailIfDone(created, userId) {
+  if (!(created.status === 'done' && created.email_on_complete && created.email_to)) return;
+  const sender = getEmailSender(userId);
+  sendTaskCompletionEmail(created, sender)
+    .then((sent) => {
+      if (sent) {
+        db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(created.id);
+      } else {
+        console.warn('Имейл при завършване прескочен за задача', created.id, '— подателят няма настроен Gmail App Password.');
+      }
+    })
+    .catch((err) => {
+      console.error('Имейл при завършване — грешка за задача', created.id, ':', err.message);
+    });
+}
+
 router.post('/', (req, res) => {
   const { errors, data } = validateTaskInput(req.body || {});
+
+  // `recurrence` (optional) — a client-side-managed series flag would need its own
+  // migration path; omitted/null keeps today's exact single-task behavior, so every
+  // existing caller is unaffected.
+  let recurrence = null;
+  if (req.body?.recurrence) {
+    recurrence = validateRecurrence(req.body.recurrence, data.date);
+    errors.push(...recurrence.errors);
+  }
+
   if (errors.length > 0) {
     return res.status(400).json({ errors });
   }
 
-  const result = db
-    .prepare(
+  if (!recurrence) {
+    const result = db
+      .prepare(
+        `INSERT INTO tasks (
+           user_id, title, notes, date, time, status, shared, client, post_type, platform, priority,
+           image_path, email_on_complete, email_to, email_subject, email_body
+         )
+         VALUES (
+           @userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @platform, @priority,
+           @image_path, @email_on_complete, @email_to, @email_subject, @email_body
+         )`
+      )
+      .run({ userId: req.user.id, ...data });
+
+    const created = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
+    recordHistory(created.id, req.user.id, req.user.id, 'created', created.title);
+    res.status(201).json(created);
+
+    // Fired after the response, not awaited: an SMTP round trip has no business making
+    // a task-save request wait on it, and staying synchronous here (no async handler)
+    // means a DB error above still hits Express's normal synchronous error handling
+    // instead of becoming an unhandled rejection (Express 4 doesn't catch those itself).
+    sendCompletionEmailIfDone(created, req.user.id);
+    return;
+  }
+
+  // Recurring path: one task_series rule row + one tasks row per occurrence date, all
+  // sharing series_id. Wrapped in a transaction (same BEGIN/COMMIT/ROLLBACK pattern as
+  // db.js's table-rebuild migration) so a mid-loop failure never leaves a partial series.
+  const rec = req.body.recurrence;
+  let createdRows;
+  db.exec('BEGIN');
+  try {
+    const seriesResult = db
+      .prepare(
+        `INSERT INTO task_series (user_id, recurrence_type, weekdays, start_date, until_date)
+         VALUES (@userId, @type, @weekdays, @startDate, @until)`
+      )
+      .run({
+        userId: req.user.id,
+        type: rec.type,
+        weekdays: rec.type === 'weekly' ? recurrence.normalizedWeekdays.join(',') : null,
+        startDate: data.date,
+        until: rec.until,
+      });
+    const seriesId = seriesResult.lastInsertRowid;
+
+    const insertStmt = db.prepare(
       `INSERT INTO tasks (
          user_id, title, notes, date, time, status, shared, client, post_type, platform, priority,
-         image_path, email_on_complete, email_to, email_subject, email_body
+         image_path, email_on_complete, email_to, email_subject, email_body, series_id
        )
        VALUES (
          @userId, @title, @notes, @date, @time, @status, @shared, @client, @post_type, @platform, @priority,
-         @image_path, @email_on_complete, @email_to, @email_subject, @email_body
+         @image_path, @email_on_complete, @email_to, @email_subject, @email_body, @seriesId
        )`
-    )
-    .run({ userId: req.user.id, ...data });
+    );
+    const insertedIds = recurrence.occurrenceDates.map(
+      (occDate) => insertStmt.run({ userId: req.user.id, ...data, date: occDate, seriesId }).lastInsertRowid
+    );
 
-  const created = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
-  res.status(201).json(created);
+    for (const id of insertedIds) {
+      recordHistory(id, req.user.id, req.user.id, 'created', data.title);
+    }
 
-  // Rare (the UI always creates tasks as pending), but a direct API call could create
-  // one already marked done — treat that the same as any other completion. Fired after
-  // the response, not awaited: an SMTP round trip has no business making a task-save
-  // request wait on it, and staying synchronous here (no async handler) means a DB
-  // error above still hits Express's normal synchronous error handling instead of
-  // becoming an unhandled rejection (Express 4 doesn't catch those on its own).
-  if (created.status === 'done' && created.email_on_complete && created.email_to) {
-    const sender = getEmailSender(req.user.id);
-    sendTaskCompletionEmail(created, sender)
-      .then((sent) => {
-        if (sent) {
-          db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(created.id);
-        } else {
-          console.warn('Имейл при завършване прескочен за задача', created.id, '— подателят няма настроен Gmail App Password.');
-        }
-      })
-      .catch((err) => {
-        console.error('Имейл при завършване — грешка за задача', created.id, ':', err.message);
-      });
+    createdRows = db
+      .prepare(`SELECT * FROM tasks WHERE id IN (${insertedIds.map(() => '?').join(',')}) ORDER BY date ASC`)
+      .all(...insertedIds);
+
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  // Same response shape as the non-recurring path (a single task object) — TaskForm.svelte
+  // never reads the POST response body, it just refetches the whole list afterwards, so
+  // this stays the least-surprising choice for any future caller of createTask().
+  res.status(201).json(createdRows[0]);
+
+  for (const created of createdRows) {
+    sendCompletionEmailIfDone(created, req.user.id);
   }
 });
 
@@ -362,70 +664,20 @@ router.put('/:id', (req, res) => {
     return res.status(400).json({ errors: ['email_to е задължителен, ако имейл при завършване е включен.'] });
   }
 
-  // Rescheduling (a new date and/or time) means any already-sent 10-min-before
-  // reminder was for the old moment — reset it so the new one still gets a reminder.
-  const rescheduled =
-    ('date' in data && data.date !== task.date) || ('time' in data && data.time !== task.time);
-  const reminderSent = rescheduled ? 0 : task.reminder_sent;
-
-  const becameUndone = task.status === 'done' && merged.status !== 'done';
-  // Un-completing resets the flag so a later re-completion sends again; completing
-  // sends (see below) and is recorded once that actually succeeds — a failed send
-  // (bad address, SMTP down) leaves it at 0 so the NEXT completion can retry, rather
-  // than silently marking a mail that never went out as sent.
-  let emailSent = becameUndone ? 0 : task.email_sent;
-  // Not just "did status change to done in THIS request" — also covers turning email
-  // on complete on (or filling in email_to) while the task was already sitting done,
-  // which used to never send until the task got toggled off and on again. The guard is
-  // "still hasn't been sent for the current done streak" (task.email_sent, the
-  // pre-update value), not becameUndone/emailSent above.
-  const shouldSendEmail = merged.status === 'done' && merged.email_on_complete && merged.email_to && !task.email_sent;
-
-  // We pass only exactly the keys that appear in the SQL text — node:sqlite throws
-  // on a named parameter in the object that has no matching placeholder.
-  db.prepare(
-    `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
-       status = @status, shared = @shared, client = @client,
-       post_type = @post_type, platform = @platform, priority = @priority, image_path = @image_path,
-       email_on_complete = @email_on_complete, email_to = @email_to,
-       email_subject = @email_subject, email_body = @email_body, email_sent = @emailSent,
-       reminder_sent = @reminderSent, updated_at = datetime('now')
-     WHERE id = @id`
-  ).run({
-    title: merged.title,
-    notes: merged.notes,
-    date: merged.date,
-    time: merged.time,
-    status: merged.status,
-    shared: merged.shared,
-    client: merged.client,
-    post_type: merged.post_type,
-    platform: merged.platform,
-    priority: merged.priority,
-    image_path: merged.image_path,
-    email_on_complete: merged.email_on_complete,
-    email_to: merged.email_to,
-    email_subject: merged.email_subject,
-    email_body: merged.email_body,
-    emailSent,
-    reminderSent,
-    id: task.id,
-  });
-
-  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id);
+  const { updated, shouldSendEmail, oldImagePath } = applyTaskUpdate(task, data, req.user.id);
   res.json(updated);
 
   // The old photo was replaced or cleared — clean it up so uploads don't accumulate
-  // forever, unless a duplicated sibling task still points at the same file.
-  // Fire-and-forget, same as the email send below.
-  if (task.image_path && task.image_path !== merged.image_path && !imagePathStillReferenced(task.image_path, task.id)) {
-    deleteUploadedFile(task.image_path);
+  // forever, unless a duplicated sibling task (or another occurrence of a recurring
+  // series) still points at the same file. Fire-and-forget, same as the email send below.
+  if (oldImagePath && oldImagePath !== updated.image_path && !imagePathStillReferenced(oldImagePath, task.id)) {
+    deleteUploadedFile(oldImagePath);
   }
 
   // Fired after the response, not awaited — see the identical reasoning in POST above.
   if (shouldSendEmail) {
     const sender = getEmailSender(req.user.id);
-    sendTaskCompletionEmail(merged, sender)
+    sendTaskCompletionEmail(updated, sender)
       .then((sent) => {
         if (sent) {
           db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(task.id);
@@ -435,6 +687,98 @@ router.put('/:id', (req, res) => {
       })
       .catch((err) => {
         console.error('Имейл при завършване — грешка за задача', task.id, ':', err.message);
+      });
+  }
+});
+
+// "This and all following" / "the entire series" bulk edit. "Just this one" doesn't
+// need a dedicated route — it reuses the plain PUT /:id above with series_id: null in
+// the body (see validateTaskInput), which both edits and detaches the occurrence from
+// the series in one call.
+//
+// date/status (and series_id itself) are deliberately never read from the body here —
+// every occurrence keeps its own generated date (bulk-setting date would collapse every
+// target row onto one day), and done-state is strictly per-occurrence. Everything else
+// that describes "what the post is" is bulk-appliable.
+const SERIES_BULK_FIELDS = [
+  'title', 'notes', 'client', 'post_type', 'platform', 'priority', 'time',
+  'image_path', 'shared', 'email_on_complete', 'email_to', 'email_subject', 'email_body',
+];
+
+router.put('/:id/series', (req, res) => {
+  const scope = req.query.scope;
+  if (!['following', 'all'].includes(scope)) {
+    return res.status(400).json({ error: 'scope трябва да е following или all.' });
+  }
+
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Задачата не е намерена.' });
+  if (task.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Може да редактираш само собствените си задачи.' });
+  }
+  if (!task.series_id) {
+    return res.status(400).json({ error: 'Задачата не е част от повтаряща се поредица.' });
+  }
+
+  const bulkBody = {};
+  for (const field of SERIES_BULK_FIELDS) {
+    if (req.body?.[field] !== undefined) bulkBody[field] = req.body[field];
+  }
+  const { errors, data } = validateTaskInput(bulkBody, { partial: true });
+  if (errors.length > 0) return res.status(400).json({ errors });
+
+  // node:sqlite throws if a named param object has a key with no matching placeholder
+  // in the SQL text — @anchorDate only appears in the `following` variant, so it's only
+  // included in the bound params when that's the active scope.
+  const whereClause = scope === 'following' ? 'series_id = @seriesId AND date >= @anchorDate' : 'series_id = @seriesId';
+  const targets = db
+    .prepare(`SELECT * FROM tasks WHERE ${whereClause}`)
+    .all(scope === 'following' ? { seriesId: task.series_id, anchorDate: task.date } : { seriesId: task.series_id });
+
+  // Validate the cross-field email_on_complete/email_to check against EVERY target row
+  // before applying anything, so a bulk edit either fully succeeds or fully fails —
+  // never partially applies then errors out on row N.
+  for (const row of targets) {
+    const merged = { ...row, ...data };
+    if (merged.email_on_complete && !merged.email_to) {
+      return res.status(400).json({ errors: ['email_to е задължителен, ако имейл при завършване е включен.'] });
+    }
+  }
+
+  const results = [];
+  const oldImagePaths = new Set();
+  const emailQueue = [];
+  db.exec('BEGIN');
+  try {
+    for (const row of targets) {
+      const { updated, shouldSendEmail, oldImagePath } = applyTaskUpdate(row, data, req.user.id);
+      results.push(updated);
+      if (oldImagePath && oldImagePath !== updated.image_path) oldImagePaths.add(oldImagePath);
+      if (shouldSendEmail) emailQueue.push(updated);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  res.json({ updated: results });
+
+  for (const p of oldImagePaths) {
+    if (!imagePathStillReferenced(p, -1)) deleteUploadedFile(p);
+  }
+  for (const row of emailQueue) {
+    const sender = getEmailSender(req.user.id);
+    sendTaskCompletionEmail(row, sender)
+      .then((sent) => {
+        if (sent) {
+          db.prepare('UPDATE tasks SET email_sent = 1 WHERE id = ?').run(row.id);
+        } else {
+          console.warn('Имейл при завършване прескочен за задача', row.id, '— подателят няма настроен Gmail App Password.');
+        }
+      })
+      .catch((err) => {
+        console.error('Имейл при завършване — грешка за задача', row.id, ':', err.message);
       });
   }
 });
@@ -450,11 +794,116 @@ router.delete('/:id', (req, res) => {
   }
 
   db.prepare('DELETE FROM tasks WHERE id = ?').run(task.id);
+  recordHistory(task.id, task.user_id, req.user.id, 'deleted', task.title);
   res.status(204).send();
 
   if (task.image_path && !imagePathStillReferenced(task.image_path, task.id)) {
     deleteUploadedFile(task.image_path);
   }
+});
+
+// "This and all following" / "the entire series" bulk delete. "Just this one" doesn't
+// need a dedicated route — the plain DELETE /:id above already works unchanged, since a
+// recurring occurrence is just a tasks row with a non-null series_id.
+router.delete('/:id/series', (req, res) => {
+  const scope = req.query.scope;
+  if (!['following', 'all'].includes(scope)) {
+    return res.status(400).json({ error: 'scope трябва да е following или all.' });
+  }
+
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Задачата не е намерена.' });
+  if (task.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Може да триеш само собствените си задачи.' });
+  }
+  if (!task.series_id) {
+    return res.status(400).json({ error: 'Задачата не е част от повтаряща се поредица.' });
+  }
+
+  const whereClause = scope === 'following' ? 'series_id = @seriesId AND date >= @anchorDate' : 'series_id = @seriesId';
+  // Gathered BEFORE deleting — imagePathStillReferenced is checked AFTER the delete
+  // below, against post-delete state, using these ids/paths as the candidate set.
+  // (See PUT /:id/series's identical comment on why @anchorDate is only bound when used.)
+  const targets = db
+    .prepare(`SELECT id, title, image_path FROM tasks WHERE ${whereClause}`)
+    .all(scope === 'following' ? { seriesId: task.series_id, anchorDate: task.date } : { seriesId: task.series_id });
+
+  const ids = targets.map((t) => t.id);
+  db.prepare(`DELETE FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
+
+  for (const row of targets) {
+    recordHistory(row.id, task.user_id, req.user.id, 'deleted', row.title);
+  }
+
+  // scope=all removes every occurrence, leaving the rule row meaningless — nothing else
+  // in this codebase would ever clean it up otherwise, so delete it here. scope=following
+  // may leave earlier occurrences behind (a legitimately "thinned" but still-alive
+  // series), which still need series_id to resolve back to a rule, so it must survive.
+  if (scope === 'all') {
+    db.prepare('DELETE FROM task_series WHERE id = ?').run(task.series_id);
+  }
+
+  res.status(204).send();
+
+  // No single "self" id to exclude anymore (the whole batch is already gone) — pass a
+  // sentinel that can never match a real row (ids are AUTOINCREMENT, never <= 0), so the
+  // exclusion clause is a no-op and this purely checks "does any SURVIVING row still
+  // reference this path" (e.g. a manually duplicated task sharing the same photo).
+  const distinctPaths = [...new Set(targets.map((t) => t.image_path).filter(Boolean))];
+  for (const p of distinctPaths) {
+    if (!imagePathStillReferenced(p, -1)) deleteUploadedFile(p);
+  }
+});
+
+// Audit history for one task — the "История" button in TaskForm.svelte. Requires the
+// task to still exist (a deleted task's events are only reachable via the global feed
+// below, GET /history, since there's no TaskForm to open a "История" dialog from
+// anymore). /:id/history (2 segments) never collides with /history (1 segment) below,
+// so registration order between the two doesn't matter.
+router.get('/:id/history', (req, res) => {
+  const task = db.prepare('SELECT id, user_id, shared, title FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) {
+    return res.status(404).json({ error: 'Задачата не е намерена.' });
+  }
+  if (!canViewTask(req, task)) {
+    return res.status(403).json({ error: 'Нямаш достъп до тази задача.' });
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT th.id, th.action, th.task_title, th.changes, th.created_at, u.username AS actor_username
+       FROM task_history th JOIN users u ON u.id = th.actor_id
+       WHERE th.task_id = ?
+       ORDER BY th.id DESC`
+    )
+    .all(task.id);
+  res.json(rows.map((r) => ({ ...r, changes: r.changes ? JSON.parse(r.changes) : null })));
+});
+
+// Global "Скорошна активност" feed — every history event across one owner's calendar
+// (same ?calendar=<ownerId> + resolveViewedOwnerId scoping as GET / and GET /unscheduled
+// above), newest first, keyset-paginated via `before` (a history row id, not a
+// timestamp — immune to same-millisecond ties that an offset/timestamp cursor could
+// drop or duplicate across pages).
+router.get('/history', (req, res) => {
+  const ownerId = resolveViewedOwnerId(req);
+  if (ownerId === null) {
+    return res.status(403).json({ error: 'Нямаш достъп до този календар.' });
+  }
+
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const before = req.query.before ? Number(req.query.before) : null;
+
+  const rows = db
+    .prepare(
+      `SELECT th.id, th.task_id, th.action, th.task_title, th.changes, th.created_at, u.username AS actor_username
+       FROM task_history th JOIN users u ON u.id = th.actor_id
+       WHERE th.owner_id = @ownerId AND (@before IS NULL OR th.id < @before)
+       ORDER BY th.id DESC
+       LIMIT @limit`
+    )
+    .all({ ownerId, before, limit });
+  res.json(rows.map((r) => ({ ...r, changes: r.changes ? JSON.parse(r.changes) : null })));
 });
 
 module.exports = router;
