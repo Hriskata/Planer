@@ -17,6 +17,7 @@
   import { trapFocus } from './modalA11y.js';
   import SeriesScopeDialog from './SeriesScopeDialog.svelte';
   import TaskHistoryDialog from './TaskHistoryDialog.svelte';
+  import CommentsDialog from './CommentsDialog.svelte';
 
   const WEEKDAY_OPTIONS = [
     { value: 1, label: 'Пон' },
@@ -37,6 +38,12 @@
     onCancel,
     onDuplicate,
     readOnly = false,
+    // Client share-link review flow (CommentsDialog.svelte) — threaded down from
+    // SharedCalendarPage.svelte when this form is opened from the public, unauthenticated
+    // link, so the dialog knows to call the public api.js functions instead of the authed
+    // ones. Both are no-ops (unused) in the normal authed context.
+    isPublicShare = false,
+    shareToken = null,
   } = $props();
 
   // When duplicating, `task` is null (this is a create, not an edit) but fields are
@@ -109,6 +116,7 @@
   let showScopeDialog = $state(null); // null | { action: 'save' | 'delete' }
 
   let showHistory = $state(false);
+  let showComments = $state(false);
 
   // "Изпрати имейл при завършване" silently no-ops server-side if the account has no
   // Gmail App Password configured (see backend/src/email.js) — nothing in the task's
@@ -301,10 +309,23 @@
     {/if}
 
     {#if task}
-      <button type="button" class="history-trigger" onclick={() => (showHistory = true)}>
-        <Icon name="clock" size="0.9rem" />
-        История
-      </button>
+      <div class="secondary-actions">
+        <button type="button" class="history-trigger" onclick={() => (showHistory = true)}>
+          <Icon name="clock" size="0.9rem" />
+          История
+        </button>
+        <button type="button" class="history-trigger" onclick={() => (showComments = true)}>
+          <Icon name="message-circle" size="0.9rem" />
+          Коментари
+          {#if task.approval_status}
+            <span
+              class="approval-dot"
+              class:approved={task.approval_status === 'approved'}
+              class:changes={task.approval_status === 'changes_requested'}
+            ></span>
+          {/if}
+        </button>
+      </div>
     {/if}
 
     <!-- disabled on the fieldset, not every single field — HTML disables every
@@ -511,6 +532,10 @@
   <TaskHistoryDialog {task} onClose={() => (showHistory = false)} />
 {/if}
 
+{#if showComments}
+  <CommentsDialog {task} {isPublicShare} {shareToken} onClose={() => (showComments = false)} />
+{/if}
+
 <style>
   .overlay {
     position: fixed;
@@ -606,12 +631,15 @@
     font-size: 0.8rem;
     color: var(--color-text-muted);
   }
+  .secondary-actions {
+    display: flex;
+    gap: 1rem;
+    margin: -0.4rem 0 0;
+  }
   .history-trigger {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    align-self: flex-start;
-    margin: -0.4rem 0 0;
     padding: 0;
     background: none;
     border: none;
@@ -622,6 +650,19 @@
   }
   .history-trigger:hover {
     color: var(--color-text);
+  }
+  .approval-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-border-strong);
+    flex-shrink: 0;
+  }
+  .approval-dot.approved {
+    background: var(--color-success);
+  }
+  .approval-dot.changes {
+    background: var(--color-danger);
   }
   .field-hint {
     font-size: 0.8rem;

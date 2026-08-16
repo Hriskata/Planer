@@ -64,6 +64,15 @@
         <Icon name="repeat" size="0.7rem" />
       </span>
     {/if}
+    {#if task.approval_status === 'approved'}
+      <span class="approval-badge approved" title="Одобрен">
+        <Icon name="check-circle" size="0.7rem" />
+      </span>
+    {:else if task.approval_status === 'changes_requested'}
+      <span class="approval-badge changes" title="Нужни промени">
+        <Icon name="alert-circle" size="0.7rem" />
+      </span>
+    {/if}
     <button
       type="button"
       class="post-label"
@@ -162,6 +171,16 @@
     display: inline-flex;
     flex-shrink: 0;
     opacity: 0.85;
+  }
+  .approval-badge {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .approval-badge.approved {
+    color: var(--color-success);
+  }
+  .approval-badge.changes {
+    color: var(--color-danger);
   }
   .post-done {
     display: flex;

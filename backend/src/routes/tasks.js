@@ -5,6 +5,7 @@ const { EMAIL_RE } = require('../validators');
 const { resolveViewedOwnerId } = require('../calendarAccess');
 const { deleteUploadedFile } = require('../uploadStorage');
 const { addDays, addMonths, isoWeekday } = require('../dateUtils');
+const { APPROVAL_STATUSES, MAX_COMMENT_LENGTH } = require('../taskFields');
 
 const router = express.Router();
 
@@ -53,6 +54,7 @@ const HISTORY_DIFF_FIELDS = [
   'title', 'notes', 'date', 'time', 'status', 'client', 'post_type',
   'platform', 'priority', 'image_path', 'shared',
   'email_on_complete', 'email_to', 'email_subject', 'email_body',
+  'approval_status',
 ];
 
 // Field-level diff between a task's pre-image and the partial `data` about to be applied
@@ -247,6 +249,18 @@ function validateTaskInput(body, { partial = false } = {}) {
     }
   }
 
+  // Client-review status (share-link feature) — owner-side changes go through this same
+  // PUT /:id path (see applyTaskUpdate below, which also stamps approval_status_set_by =
+  // 'owner'); the public/client-side equivalent is a separate raw UPDATE in
+  // publicShare.js, since there's no authenticated user to attribute it to.
+  if (body.approval_status !== undefined) {
+    if (body.approval_status !== null && !APPROVAL_STATUSES.includes(body.approval_status)) {
+      errors.push(`approval_status трябва да е null или едно от: ${APPROVAL_STATUSES.join(', ')}.`);
+    } else {
+      data.approval_status = body.approval_status;
+    }
+  }
+
   // Cross-field: "send an email" only makes sense with a recipient. On a full create,
   // every field above already has a value (explicit or defaulted), so this can be
   // checked right here; a partial update may be touching neither field (leaving both at
@@ -369,6 +383,10 @@ function applyTaskUpdate(task, data, actorId) {
   const emailSent = becameUndone ? 0 : task.email_sent;
   const shouldSendEmail = merged.status === 'done' && merged.email_on_complete && merged.email_to && !task.email_sent;
   const seriesId = 'series_id' in data ? data.series_id : task.series_id;
+  // Owner-only path (applyTaskUpdate is never called from the public/client routes —
+  // those do a separate raw UPDATE, see publicShare.js) — safe to hardcode 'owner' here
+  // whenever the status is actually part of this update.
+  const approvalStatusSetBy = 'approval_status' in data ? 'owner' : task.approval_status_set_by;
 
   db.prepare(
     `UPDATE tasks SET title = @title, notes = @notes, date = @date, time = @time,
@@ -376,7 +394,9 @@ function applyTaskUpdate(task, data, actorId) {
        post_type = @post_type, platform = @platform, priority = @priority, image_path = @image_path,
        email_on_complete = @email_on_complete, email_to = @email_to,
        email_subject = @email_subject, email_body = @email_body, email_sent = @emailSent,
-       reminder_sent = @reminderSent, series_id = @seriesId, updated_at = datetime('now')
+       reminder_sent = @reminderSent, series_id = @seriesId,
+       approval_status = @approvalStatus, approval_status_set_by = @approvalStatusSetBy,
+       updated_at = datetime('now')
      WHERE id = @id`
   ).run({
     title: merged.title,
@@ -397,6 +417,8 @@ function applyTaskUpdate(task, data, actorId) {
     emailSent,
     reminderSent,
     seriesId,
+    approvalStatus: merged.approval_status,
+    approvalStatusSetBy,
     id: task.id,
   });
 
@@ -445,7 +467,8 @@ router.get('/', (req, res) => {
   // query text in JS) so both params are always bound, regardless of which side is true.
   const baseQuery = `
     SELECT id, user_id, title, notes, date, time, status, shared, color,
-           client, post_type, platform, priority, image_path, series_id, created_at, updated_at,
+           client, post_type, platform, priority, image_path, series_id,
+           approval_status, created_at, updated_at,
            ${REDACTED_EMAIL_COLUMNS}
     FROM tasks
     WHERE (
@@ -505,7 +528,8 @@ router.get('/unscheduled', (req, res) => {
   const rows = db
     .prepare(
       `SELECT id, user_id, title, notes, date, time, status, shared, color,
-              client, post_type, platform, priority, image_path, series_id, reminder_sent, created_at, updated_at,
+              client, post_type, platform, priority, image_path, series_id,
+              approval_status, reminder_sent, created_at, updated_at,
               ${REDACTED_EMAIL_COLUMNS}
        FROM tasks
        WHERE (
@@ -793,6 +817,9 @@ router.delete('/:id', (req, res) => {
     return res.status(403).json({ error: 'Може да триеш само собствените си задачи.' });
   }
 
+  // Unlike task_history (must survive the task), comments are meaningless without it —
+  // explicit cleanup since FK cascade isn't actually enforced (no PRAGMA foreign_keys).
+  db.prepare('DELETE FROM task_comments WHERE task_id = ?').run(task.id);
   db.prepare('DELETE FROM tasks WHERE id = ?').run(task.id);
   recordHistory(task.id, task.user_id, req.user.id, 'deleted', task.title);
   res.status(204).send();
@@ -829,6 +856,7 @@ router.delete('/:id/series', (req, res) => {
     .all(scope === 'following' ? { seriesId: task.series_id, anchorDate: task.date } : { seriesId: task.series_id });
 
   const ids = targets.map((t) => t.id);
+  db.prepare(`DELETE FROM task_comments WHERE task_id IN (${ids.map(() => '?').join(',')})`).run(...ids);
   db.prepare(`DELETE FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids);
 
   for (const row of targets) {
@@ -878,6 +906,52 @@ router.get('/:id/history', (req, res) => {
     )
     .all(task.id);
   res.json(rows.map((r) => ({ ...r, changes: r.changes ? JSON.parse(r.changes) : null })));
+});
+
+// Comment thread on one task — the client share-link review flow (see CommentsDialog.svelte,
+// used both from the owner's normal TaskForm and from SharedCalendarPage's read-only one).
+// Same visibility rule as /:id/history — owner, any shared=1 viewer, or a calendar_shares
+// collaborator can READ the thread.
+router.get('/:id/comments', (req, res) => {
+  const task = db.prepare('SELECT id, user_id, shared FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) {
+    return res.status(404).json({ error: 'Задачата не е намерена.' });
+  }
+  if (!canViewTask(req, task)) {
+    return res.status(403).json({ error: 'Нямаш достъп до тази задача.' });
+  }
+
+  const rows = db
+    .prepare('SELECT id, author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY id ASC')
+    .all(task.id);
+  res.json(rows);
+});
+
+// Posting a comment from the authed/owner side — unlike reading, only the task's actual
+// owner may WRITE here (matches every other mutating route in this file); the client-side
+// equivalent is a separate unauthenticated route in publicShare.js, author = 'client'.
+router.post('/:id/comments', (req, res) => {
+  const task = db.prepare('SELECT id, user_id FROM tasks WHERE id = ?').get(req.params.id);
+  if (!task) {
+    return res.status(404).json({ error: 'Задачата не е намерена.' });
+  }
+  if (task.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Може да коментираш само собствените си задачи.' });
+  }
+
+  const body = req.body?.body;
+  if (typeof body !== 'string' || body.trim().length === 0) {
+    return res.status(400).json({ error: 'Коментарът не може да е празен.' });
+  }
+  if (body.length > MAX_COMMENT_LENGTH) {
+    return res.status(400).json({ error: `Коментарът трябва да е до ${MAX_COMMENT_LENGTH} символа.` });
+  }
+
+  const result = db
+    .prepare('INSERT INTO task_comments (task_id, author, body) VALUES (?, ?, ?)')
+    .run(task.id, 'owner', body.trim());
+  const created = db.prepare('SELECT id, author, body, created_at FROM task_comments WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json(created);
 });
 
 // Global "Скорошна активност" feed — every history event across one owner's calendar

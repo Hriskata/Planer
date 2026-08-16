@@ -95,7 +95,7 @@
   </main>
 
   {#if selectedTask}
-    <TaskForm task={selectedTask} readOnly={true} onCancel={closeTask} />
+    <TaskForm task={selectedTask} readOnly={true} onCancel={closeTask} isPublicShare={true} shareToken={token} />
   {/if}
 </div>
 

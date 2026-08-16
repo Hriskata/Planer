@@ -330,3 +330,43 @@ export function getHistoryFeed({ calendarOwnerId, before, limit } = {}) {
     .join('&');
   return request(`/tasks/history${params ? `?${params}` : ''}`);
 }
+
+// Comment thread (CommentsDialog.svelte), authed/owner side. approval_status itself has
+// no dedicated function here — the owner changes it through the existing updateTask(id,
+// { approval_status }), same as any other task field (see tasks.js's applyTaskUpdate).
+export function getTaskComments(id) {
+  return request(`/tasks/${id}/comments`);
+}
+
+export function postTaskComment(id, body) {
+  return request(`/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
+}
+
+// Public, unauthenticated equivalents — same bare-fetch/no-request()/no-offline-cache
+// reasoning as getPublicShareLink/getPublicShareTasks above (must behave identically
+// whether or not the visitor happens to be logged in on that browser).
+export async function getPublicTaskComments(token, taskId) {
+  const res = await fetch(`/api/public-share/${encodeURIComponent(token)}/tasks/${taskId}/comments`);
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function postPublicTaskComment(token, taskId, body) {
+  const res = await fetch(`/api/public-share/${encodeURIComponent(token)}/tasks/${taskId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}
+
+export async function updatePublicApprovalStatus(token, taskId, status) {
+  const res = await fetch(`/api/public-share/${encodeURIComponent(token)}/tasks/${taskId}/approval-status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) await throwApiError(res);
+  return res.json();
+}

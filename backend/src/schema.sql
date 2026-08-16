@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS tasks (
                                              -- ON DELETE SET NULL is documentation only —
                                              -- this DB never sets PRAGMA foreign_keys = ON,
                                              -- so nothing here is actually enforced by SQLite.
+  approval_status TEXT,                     -- NULL ("За преглед"/default) | 'approved' |
+                                             -- 'changes_requested' — client share-link review
+  approval_status_set_by TEXT,              -- NULL | 'client' | 'owner' — who last changed it,
+                                             -- purely informational (see routes/tasks.js,
+                                             -- routes/publicShare.js)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -165,3 +170,20 @@ CREATE TABLE IF NOT EXISTS task_history (
 
 CREATE INDEX IF NOT EXISTS idx_task_history_task ON task_history(task_id);
 CREATE INDEX IF NOT EXISTS idx_task_history_owner_created ON task_history(owner_id, id);
+
+-- Коментарна нишка на задача — client share-link review флоу (виж routes/tasks.js's
+-- /:id/comments и routes/publicShare.js's /:token/tasks/:taskId/comments). За разлика от
+-- task_history по-горе, тези редове НЯМАТ смисъл без съществуваща задача — explicit
+-- app-level DELETE FROM task_comments придружава всяко DELETE FROM tasks (виж DELETE
+-- routes в tasks.js), вместо да разчита на FK cascade (PRAGMA foreign_keys никога не е
+-- ON тук, така че самата ON DELETE CASCADE декларация по-долу е само документация).
+CREATE TABLE IF NOT EXISTS task_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author TEXT NOT NULL,                     -- 'client' | 'owner' — коя СТРАНА е писала
+                                             -- (клиентът няма акаунт през share линка)
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
