@@ -20,7 +20,27 @@
       "Bash(docker stop *)",
       "Bash(docker volume *)",
       "Bash(docker run *)",
-      "Bash(curl -s --max-time 3 http://localhost:3001/api/tasks -o /dev/null -w \"backend on 3001: %{http_code}\\\\n\")"
+      "Bash(curl -s --max-time 3 http://localhost:3001/api/tasks -o /dev/null -w \"backend on 3001: %{http_code}\\\\n\")",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(curl -s --max-time 5 http://localhost:3000/api/tasks -o /dev/null -w \"backend live: %{http_code}\\\\n\")",
+      "Bash(npm test *)",
+      "Bash(curl -s --max-time 2 http://localhost:5173/ -o /dev/null -w \"frontend 5173: %{http_code}\\\\n\")",
+      "Bash(curl -s --max-time 2 http://localhost:3000/api/tasks -o /dev/null -w \"backend 3000: %{http_code}\\\\n\")",
+      "Bash(docker exec *)",
+      "Bash(timeout 60 node image-flow-verify.js)",
+      "Bash(docker exec planer-app-1 node -e ' *)",
+      "Bash(cp src/notifications.js /tmp/notifications.js.bak)",
+      "Bash(copy src\\\\notifications.js src\\\\notifications.js.bak)",
+      "Bash(node --test test/notifications.test.js)",
+      "Bash(rm -f src/notifications.js)",
+      "Bash(mv src/notifications.js.bak src/notifications.js)",
+      "Bash(git checkout *)",
+      "Bash(timeout 60 node posttile-keyboard-verify.js)",
+      "Bash(node -e \"require\\('http'\\).get\\('http://localhost:3000/api/auth/google-client-id', \\(r\\) => { console.log\\('status:', r.statusCode\\); process.exit\\(r.statusCode === 200 ? 0 : 1\\); }\\).on\\('error', \\(e\\) => { console.log\\('error:', e.message\\); process.exit\\(1\\); }\\)\")",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(node -e \"require\\('http'\\).get\\('http://localhost:9999/api/auth/google-client-id', \\(r\\) => { console.log\\('status:', r.statusCode\\); process.exit\\(r.statusCode === 200 ? 0 : 1\\); }\\).on\\('error', \\(e\\) => { console.log\\('error:', e.message\\); process.exit\\(1\\); }\\)\")",
+      "Bash(npm view *)"
     ]
   }
 }

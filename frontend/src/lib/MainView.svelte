@@ -290,7 +290,7 @@
     aria-label="Филтър по тип пост"
   >
     <option value="">Всички типове</option>
-    {#each POST_TYPES as pt}<option value={pt}>{pt}</option>{/each}
+    {#each POST_TYPES as pt (pt)}<option value={pt}>{pt}</option>{/each}
   </select>
   <select
     class="filter-select"
@@ -299,7 +299,7 @@
     aria-label="Филтър по приоритет"
   >
     <option value="">Всички приоритети</option>
-    {#each PRIORITIES as p}<option value={p}>{priorityLabel(p)}</option>{/each}
+    {#each PRIORITIES as p (p)}<option value={p}>{priorityLabel(p)}</option>{/each}
   </select>
   {#if searchQuery || selectedClient || selectedPostType || selectedPriority}
     <button class="tag-chip clear-all" onclick={clearFilters}>Изчисти всички</button>

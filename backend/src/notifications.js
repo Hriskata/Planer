@@ -59,23 +59,35 @@ async function sendReminder(task) {
 // restart) still fires it exactly once, just late, rather than requiring a precise
 // instant to not miss it. reminder_minutes varies per user, so it's read from the
 // joined users row per task rather than a single bound parameter shared by every row.
-async function checkReminders() {
-  if (!ensureConfigured()) return;
-  const now = nowString();
-  const dueTasks = db
-    .prepare(
-      `SELECT t.* FROM tasks t
-       JOIN users u ON u.id = t.user_id
-       WHERE t.reminder_sent = 0
-         AND t.date IS NOT NULL AND t.time IS NOT NULL
-         AND datetime(t.date || ' ' || t.time) <= datetime(@now, '+' || u.reminder_minutes || ' minutes')
-         AND datetime(t.date || ' ' || t.time) >= datetime(@now)`
-    )
-    .all({ now });
+// Guards against two overlapping runs sending the same reminder twice — reminder_sent
+// only flips to 1 AFTER a run finishes sending a task (so a crashed/failed send can
+// still retry on the next tick), which means a run that takes longer than the 30s
+// interval (many due tasks, a slow/unreachable push endpoint) would otherwise let the
+// next tick re-select and re-send the same still-unsent tasks.
+let running = false;
 
-  for (const task of dueTasks) {
-    await sendReminder(task);
-    db.prepare('UPDATE tasks SET reminder_sent = 1 WHERE id = ?').run(task.id);
+async function checkReminders() {
+  if (!ensureConfigured() || running) return;
+  running = true;
+  try {
+    const now = nowString();
+    const dueTasks = db
+      .prepare(
+        `SELECT t.* FROM tasks t
+         JOIN users u ON u.id = t.user_id
+         WHERE t.reminder_sent = 0
+           AND t.date IS NOT NULL AND t.time IS NOT NULL
+           AND datetime(t.date || ' ' || t.time) <= datetime(@now, '+' || u.reminder_minutes || ' minutes')
+           AND datetime(t.date || ' ' || t.time) >= datetime(@now)`
+      )
+      .all({ now });
+
+    for (const task of dueTasks) {
+      await sendReminder(task);
+      db.prepare('UPDATE tasks SET reminder_sent = 1 WHERE id = ?').run(task.id);
+    }
+  } finally {
+    running = false;
   }
 }
 

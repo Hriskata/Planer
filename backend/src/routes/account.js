@@ -38,6 +38,17 @@ router.put('/email-sender', (req, res) => {
     updates.email_app_password_enc = encrypt(appPassword.trim());
   } else if (appPassword === '') {
     updates.email_app_password_enc = null;
+  } else if ('email' in updates) {
+    // Changing the sender address without also supplying a new App Password would
+    // otherwise leave a stale password paired with the new address, silently failing
+    // Gmail auth on every completion email from here on (only console.error'd, nothing
+    // in-app ever surfaces it — see tasks.js's fire-and-forget send). Clearing it here
+    // instead makes the existing "no sender configured" warning in TaskForm catch this
+    // immediately, rather than emails quietly going nowhere.
+    const current = db.prepare('SELECT email FROM users WHERE id = ?').get(req.user.id);
+    if (updates.email !== current.email) {
+      updates.email_app_password_enc = null;
+    }
   }
 
   if (Object.keys(updates).length > 0) {

@@ -1,6 +1,8 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { startServer, stopServer, createUser, tokenFor, shareCalendar, setEmail, api } = require('./helpers');
+const fs = require('fs');
+const path = require('path');
+const { startServer, stopServer, createUser, tokenFor, shareCalendar, setEmail, api, UPLOADS_DIR } = require('./helpers');
 
 before(startServer);
 after(stopServer);
@@ -103,4 +105,16 @@ test('a stranger with no calendar_shares row is blocked from the library entirel
   const stranger = createUser('libstranger1');
   const res = await api(`/api/library?calendar=${owner.id}`, { token: tokenFor(stranger) });
   assert.equal(res.status, 403);
+});
+
+test('deleting a library asset removes its uploaded file from disk', async () => {
+  const token = tokenFor(createUser('libuser6'));
+  const uploaded = await api('/api/library', { method: 'POST', token, form: colorForm({ withPhoto: true }) });
+  assert.equal(uploaded.status, 201);
+  const diskPath = path.join(UPLOADS_DIR, path.basename(uploaded.body.file_path));
+  assert.ok(fs.existsSync(diskPath), 'uploaded file should exist right after upload');
+
+  await api(`/api/library/${uploaded.body.id}`, { method: 'DELETE', token });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(!fs.existsSync(diskPath), 'uploaded file should be removed after the asset is deleted');
 });

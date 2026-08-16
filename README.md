@@ -82,6 +82,9 @@ cd backend && npm test
 
 # Frontend — Playwright E2E, пуска сам временен backend (порт 3901) + Vite dev сървър (порт 5273)
 cd frontend && npm run test:e2e
+
+# Frontend — ESLint (eslint-plugin-svelte), не е включен в тест suite-а, пуска се ръчно
+cd frontend && npm run lint
 ```
 
 Никой от двата suite-а не пипа реалните dev/Docker данни — всеки работи срещу собствена, временна база.
@@ -133,6 +136,8 @@ cp .env.example .env
 ```
 
 Отвори `.env` и задай истински `JWT_SECRET` (същия начин като при `backend/.env.example`). `TUNNEL_TOKEN` остава празен, докато не стигнеш до секцията за Cloudflare Tunnel по-долу.
+
+Задължителен е и `ENCRYPTION_KEY` (64 hex символа — генерирай с `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`), още преди първия потребител да опита да запази Gmail App Password в Настройки — без него заявката просто гърми с generic грешка, без ясна причина в логовете. `GOOGLE_CLIENT_ID`/`GOOGLE_ALLOWED_EMAILS` са опционални — оставени празни просто скриват бутона "Вход с Google" (виж коментарите в `.env.example`).
 
 ```bash
 docker compose build app

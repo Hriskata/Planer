@@ -30,7 +30,11 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     depends_on:
-      - app
+      app:
+        # Not just "started" — waits for the HEALTHCHECK in the Dockerfile, so a backend
+        # that fails fast (e.g. missing JWT_SECRET) doesn't leave the tunnel routing
+        # traffic to a dead container with no clear signal why.
+        condition: service_healthy
 
 volumes:
   planer-data:

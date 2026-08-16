@@ -3,6 +3,7 @@ const db = require('../db');
 const { sendTaskCompletionEmail } = require('../email');
 const { EMAIL_RE } = require('../validators');
 const { resolveViewedOwnerId } = require('../calendarAccess');
+const { deleteUploadedFile } = require('../uploadStorage');
 
 const router = express.Router();
 
@@ -28,6 +29,15 @@ const REDACTED_EMAIL_COLUMNS = `
 // this is keyed off req.user.id in both call sites below, not the task's own user_id.
 function getEmailSender(userId) {
   return db.prepare('SELECT id, email, email_app_password_enc FROM users WHERE id = ?').get(userId);
+}
+
+// "Копирай" (duplicate) on a task carries its image_path over verbatim (see
+// TaskForm.svelte), so two rows can legitimately point at the same physical file until
+// one of them gets its own new photo — only actually delete the file once nothing else
+// references it, or the sibling task's photo breaks.
+function imagePathStillReferenced(imagePath, excludeTaskId) {
+  const row = db.prepare('SELECT 1 FROM tasks WHERE image_path = ? AND id != ? LIMIT 1').get(imagePath, excludeTaskId);
+  return Boolean(row);
 }
 
 function validateTaskInput(body, { partial = false } = {}) {
@@ -405,6 +415,13 @@ router.put('/:id', (req, res) => {
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id);
   res.json(updated);
 
+  // The old photo was replaced or cleared — clean it up so uploads don't accumulate
+  // forever, unless a duplicated sibling task still points at the same file.
+  // Fire-and-forget, same as the email send below.
+  if (task.image_path && task.image_path !== merged.image_path && !imagePathStillReferenced(task.image_path, task.id)) {
+    deleteUploadedFile(task.image_path);
+  }
+
   // Fired after the response, not awaited — see the identical reasoning in POST above.
   if (shouldSendEmail) {
     const sender = getEmailSender(req.user.id);
@@ -434,6 +451,10 @@ router.delete('/:id', (req, res) => {
 
   db.prepare('DELETE FROM tasks WHERE id = ?').run(task.id);
   res.status(204).send();
+
+  if (task.image_path && !imagePathStillReferenced(task.image_path, task.id)) {
+    deleteUploadedFile(task.image_path);
+  }
 });
 
 module.exports = router;

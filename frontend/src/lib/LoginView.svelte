@@ -91,7 +91,7 @@
       Парола
       <input type="password" bind:value={password} autocomplete="current-password" required />
     </label>
-    {#if error}<p class="error">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{error}</p>{/if}
     <button type="submit" disabled={loading}>{loading ? 'Влизане...' : 'Вход'}</button>
 
     {#if googleReady}

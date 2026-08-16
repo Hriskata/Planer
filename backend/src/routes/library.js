@@ -1,15 +1,11 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 const db = require('../db');
 const { resolveViewedOwnerId } = require('../calendarAccess');
+const { UPLOADS_DIR, deleteUploadedFile } = require('../uploadStorage');
 
 const router = express.Router();
-
-const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Broader than routes/uploads.js's image-only set — brand assets are logos/photos
 // (images), font files, and the occasional brand-guideline PDF (folded into "Друго"
@@ -36,8 +32,10 @@ const HEX_RE = /^#?[0-9a-fA-F]{3}$|^#?[0-9a-fA-F]{6}$/;
 
 const storage = multer.diskStorage({
   destination: UPLOADS_DIR,
+  // fileFilter below always rejects an unrecognized mimetype first, so
+  // ALLOWED_TYPES[file.mimetype] is guaranteed to exist by the time this runs.
   filename: (req, file, cb) => {
-    cb(null, `${crypto.randomUUID()}${ALLOWED_TYPES[file.mimetype] || ''}`);
+    cb(null, `${crypto.randomUUID()}${ALLOWED_TYPES[file.mimetype]}`);
   },
 });
 
@@ -165,6 +163,10 @@ router.delete('/:id', (req, res) => {
   }
   db.prepare('DELETE FROM library_assets WHERE id = ?').run(asset.id);
   res.status(204).send();
+
+  if (asset.file_path) {
+    deleteUploadedFile(asset.file_path);
+  }
 });
 
 // Multer/fileFilter errors (wrong type, too large) land here instead of the generic

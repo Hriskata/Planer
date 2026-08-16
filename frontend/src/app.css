@@ -19,6 +19,7 @@
   --color-accent: #2563eb;
   --color-accent-hover: #1d4ed8;
   --color-danger: #dc2626;
+  --color-success: #16a34a;
   --color-overlay: rgba(15, 23, 42, 0.4);
   --color-banner-bg: #fef3c7;
   --color-banner-text: #92400e;
@@ -61,6 +62,7 @@
   --color-accent: #3b82f6;
   --color-accent-hover: #60a5fa;
   --color-danger: #f87171;
+  --color-success: #4ade80;
   --color-overlay: rgba(0, 0, 0, 0.6);
   --color-banner-bg: #451a03;
   --color-banner-text: #fbbf24;

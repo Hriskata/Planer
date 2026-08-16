@@ -31,14 +31,14 @@
       <button class="cta" onclick={onEnter}>Започни безплатно</button>
     </div>
     <div class="hero-shot">
-      <img src="/landing/hero.png" alt="Месечен изглед на календара на Планер" />
+      <img src="/landing/hero.png" alt="Месечен изглед на календара на Планер" width="1312" height="660" />
     </div>
   </section>
 
   <section class="features">
     <div class="feature">
       <div class="feature-shot">
-        <img src="/landing/calendar.png" alt="Седмичен изглед с оцветени постове по тип" />
+        <img src="/landing/calendar.png" alt="Седмичен изглед с оцветени постове по тип" width="1310" height="500" loading="lazy" />
       </div>
       <div class="feature-copy">
         <h2>Изглед по ден, седмица или месец</h2>
@@ -51,7 +51,7 @@
 
     <div class="feature reverse">
       <div class="feature-shot">
-        <img src="/landing/organize.png" alt="Постове, оцветени по тип, с индикатор за приоритет" />
+        <img src="/landing/organize.png" alt="Постове, оцветени по тип, с индикатор за приоритет" width="460" height="360" loading="lazy" />
       </div>
       <div class="feature-copy">
         <h2>Организация с един поглед</h2>

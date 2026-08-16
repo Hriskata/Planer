@@ -38,3 +38,31 @@ test('protected routes reject requests with a garbage token', async () => {
   const res = await api('/api/tasks', { token: 'not-a-real-token' });
   assert.equal(res.status, 401);
 });
+
+test('repeated failed logins against the same username get rate-limited', async () => {
+  createUser('ratelimited', 'realpassword123');
+
+  // 8 is LOGIN_MAX_ATTEMPTS in routes/auth.js — all should still be plain 401s.
+  for (let i = 0; i < 8; i++) {
+    const res = await api('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'ratelimited', password: 'wrong' },
+    });
+    assert.equal(res.status, 401, `attempt ${i + 1} should be a normal 401`);
+  }
+
+  // The 9th attempt (even with a fresh, DIFFERENT wrong guess) should be throttled.
+  const throttled = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'ratelimited', password: 'also-wrong' },
+  });
+  assert.equal(throttled.status, 429);
+
+  // Throttling is per-username — a different account is unaffected.
+  createUser('notratelimited', 'password123');
+  const other = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'notratelimited', password: 'password123' },
+  });
+  assert.equal(other.status, 200);
+});

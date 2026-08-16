@@ -5,6 +5,7 @@
   import { PRIORITIES, priorityLabel } from './priorities.js';
   import { PLATFORMS, PLATFORM_OTHER } from './platforms.js';
   import Icon from './Icon.svelte';
+  import { trapFocus } from './modalA11y.js';
 
   let {
     task = null,
@@ -77,29 +78,46 @@
   // own save/complete flow would ever surface that, so the checkbox itself has to warn
   // about it here. null = not loaded yet (no warning while we don't know).
   let senderConfigured = $state(null);
-  if (!untrack(() => readOnly)) {
-    getEmailSenderSettings()
-      .then((s) => (senderConfigured = s.hasAppPassword))
-      .catch(() => {});
+  // Fetched lazily — only once the checkbox is actually relevant (already on when
+  // editing a task that has it, or just turned on), not unconditionally on every single
+  // form open. Most task creates/edits never touch this checkbox at all, so eagerly
+  // fetching on every open was a network round trip almost nothing needed.
+  $effect(() => {
+    if (!readOnly && emailOnComplete && senderConfigured === null) {
+      getEmailSenderSettings()
+        .then((s) => (senderConfigured = s.hasAppPassword))
+        .catch(() => {});
+    }
+  });
+
+  // The actual upload is deferred until submit (see handleSubmit) — picking a file just
+  // stores it + a local blob: preview. Uploading eagerly (the old behavior) created a
+  // server-side file the instant a file was chosen, with no code path to clean it up if
+  // the form was then cancelled, or the photo swapped for a different one before saving
+  // — an unbounded orphaned-upload leak. Submitting an already-selected file for an
+  // EXISTING task's photo still goes through updateTask's normal image_path change,
+  // which the backend already cleans the old file up for.
+  let pendingImageFile = $state(null);
+  let previewUrl = $state(untrack(() => source?.image_path ?? null));
+
+  function revokePreviewIfBlob() {
+    if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
   }
 
-  let imageUploading = $state(false);
-  let imageError = $state('');
-
-  async function handleImageSelect(e) {
+  function handleImageSelect(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    imageError = '';
-    imageUploading = true;
-    try {
-      const result = await uploadImage(file);
-      imagePath = result.path;
-    } catch (err) {
-      imageError = err.message;
-    } finally {
-      imageUploading = false;
-      e.target.value = ''; // lets the same file be picked again later if removed
-    }
+    revokePreviewIfBlob();
+    pendingImageFile = file;
+    previewUrl = URL.createObjectURL(file);
+    e.target.value = ''; // lets the same file be picked again later if removed
+  }
+
+  function handleRemoveImage() {
+    revokePreviewIfBlob();
+    imagePath = null;
+    pendingImageFile = null;
+    previewUrl = null;
   }
 
   // Picking an hour defaults the minute to :00; clearing the hour clears the minute too
@@ -117,25 +135,31 @@
       return;
     }
     saving = true;
-    const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
-    const payload = {
-      title,
-      date: date || null,
-      time,
-      notes: notes || null,
-      shared,
-      client: client || null,
-      post_type: postType || null,
-      platform: platform === PLATFORM_OTHER ? platformOther.trim() || null : platform || null,
-      priority: priority !== '' ? Number(priority) : null,
-      image_path: imagePath,
-      status: done ? 'done' : 'pending',
-      email_on_complete: emailOnComplete,
-      email_to: emailOnComplete ? emailTo.trim() : null,
-      email_subject: emailOnComplete ? emailSubject || null : null,
-      email_body: emailOnComplete ? emailBody || null : null,
-    };
     try {
+      // Only actually uploaded now, at save time — see the comment on pendingImageFile.
+      if (pendingImageFile) {
+        const result = await uploadImage(pendingImageFile);
+        imagePath = result.path;
+        pendingImageFile = null;
+      }
+      const time = hour !== '' && minute !== '' ? `${hour}:${minute}` : null;
+      const payload = {
+        title,
+        date: date || null,
+        time,
+        notes: notes || null,
+        shared,
+        client: client || null,
+        post_type: postType || null,
+        platform: platform === PLATFORM_OTHER ? platformOther.trim() || null : platform || null,
+        priority: priority !== '' ? Number(priority) : null,
+        image_path: imagePath,
+        status: done ? 'done' : 'pending',
+        email_on_complete: emailOnComplete,
+        email_to: emailOnComplete ? emailTo.trim() : null,
+        email_subject: emailOnComplete ? emailSubject || null : null,
+        email_body: emailOnComplete ? emailBody || null : null,
+      };
       if (task) {
         await updateTask(task.id, payload);
       } else {
@@ -164,8 +188,14 @@
 </script>
 
 <div class="overlay" onclick={(e) => { if (e.target === e.currentTarget) onCancel(); }} role="presentation">
-  <form onsubmit={handleSubmit}>
-    <h2>{readOnly ? 'Преглед на пост' : task ? 'Редакция на пост' : 'Нов пост'}</h2>
+  <form
+    onsubmit={handleSubmit}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="task-form-title"
+    use:trapFocus={{ onEscape: onCancel }}
+  >
+    <h2 id="task-form-title">{readOnly ? 'Преглед на пост' : task ? 'Редакция на пост' : 'Нов пост'}</h2>
 
     <!-- disabled on the fieldset, not every single field — HTML disables every
          descendant input/select/textarea/button in one place instead of threading
@@ -186,14 +216,14 @@
         Тип пост
         <select bind:value={postType}>
           <option value="">— Избери —</option>
-          {#each POST_TYPES as pt}<option value={pt}>{pt}</option>{/each}
+          {#each POST_TYPES as pt (pt)}<option value={pt}>{pt}</option>{/each}
         </select>
       </label>
       <label>
         Приоритет (по избор)
         <select bind:value={priority}>
           <option value="">— Без —</option>
-          {#each PRIORITIES as p}<option value={p}>{priorityLabel(p)}</option>{/each}
+          {#each PRIORITIES as p (p)}<option value={p}>{priorityLabel(p)}</option>{/each}
         </select>
       </label>
     </div>
@@ -203,7 +233,7 @@
         Платформа (по избор)
         <select bind:value={platform}>
           <option value="">— Без —</option>
-          {#each PLATFORMS as p}<option value={p}>{p}</option>{/each}
+          {#each PLATFORMS as p (p)}<option value={p}>{p}</option>{/each}
           <option value={PLATFORM_OTHER}>{PLATFORM_OTHER}</option>
         </select>
       </label>
@@ -225,12 +255,12 @@
         <div class="time-select">
           <select bind:value={hour}>
             <option value="">— —</option>
-            {#each HOURS as h}<option value={h}>{h}</option>{/each}
+            {#each HOURS as h (h)}<option value={h}>{h}</option>{/each}
           </select>
           <span>:</span>
           <select bind:value={minute} disabled={hour === ''}>
             {#if hour === ''}<option value="">— —</option>{/if}
-            {#each MINUTES as m}<option value={m}>{m}</option>{/each}
+            {#each MINUTES as m (m)}<option value={m}>{m}</option>{/each}
           </select>
         </div>
       </label>
@@ -243,21 +273,20 @@
 
     <div class="field">
       <span class="field-label">Снимка (по избор)</span>
-      {#if imagePath}
+      {#if previewUrl}
         <div class="image-preview">
-          <img src={imagePath} alt="Преглед на качената снимка" />
-          <button type="button" class="remove-image" onclick={() => (imagePath = null)} aria-label="Премахни снимката">
+          <img src={previewUrl} alt="Преглед на снимката" />
+          <button type="button" class="remove-image" onclick={handleRemoveImage} aria-label="Премахни снимката">
             ×
           </button>
         </div>
       {:else}
-        <label class="upload-dropzone" class:uploading={imageUploading}>
-          <input type="file" accept="image/*" onchange={handleImageSelect} disabled={imageUploading} hidden />
+        <label class="upload-dropzone">
+          <input type="file" accept="image/*" onchange={handleImageSelect} hidden />
           <span class="upload-icon"><Icon name="camera" size="1.2rem" /></span>
-          {imageUploading ? 'Качване...' : 'Качи снимка'}
+          Качи снимка
         </label>
       {/if}
-      {#if imageError}<p class="error">{imageError}</p>{/if}
     </div>
 
     {#if task}
@@ -303,7 +332,7 @@
       </div>
     {/if}
 
-    {#if error}<p class="error">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{error}</p>{/if}
     </fieldset>
 
     <div class="form-actions">
@@ -458,10 +487,6 @@
   .upload-dropzone:hover {
     border-color: var(--color-accent);
     background: var(--color-accent-tint);
-  }
-  .upload-dropzone.uploading {
-    cursor: wait;
-    opacity: 0.7;
   }
   .upload-icon {
     font-size: 1.2rem;

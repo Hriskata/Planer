@@ -32,30 +32,23 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- A plain <button> can't contain the "Завършен" checkbox below (nested interactive
-     controls are invalid HTML and double-fire clicks) — this div carries the same
-     edit-on-click/keyboard behavior a button gives for free. -->
+<!-- Not role="button"/tabindex — a checkbox nested inside an element exposed as a
+     button to assistive tech is an invalid, confusing ARIA structure (and doubles the
+     tab stops per tile). Mouse users can still click anywhere on the tile to edit (this
+     onclick); the real keyboard/AT-accessible entry point is the .post-label button
+     below instead, a plain sibling of the checkbox, not an ancestor of it. -->
 <div
   class="post"
   class:done={task.status === 'done'}
   class:dimmed
   class:dragging={getDragState()?.task.id === task.id}
   style={tileColorStyle()}
-  role="button"
-  tabindex="0"
   onpointerdown={(e) => {
     if (!readOnly) handlePointerDown(e, task);
   }}
   onclick={() => {
     if (consumeSuppressedClick()) return;
     onEdit(task);
-  }}
-  onkeydown={(e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onEdit(task);
-    }
   }}
 >
   <div class="post-header">
@@ -65,7 +58,17 @@
            too would fight the post-type background instead of just accenting it. -->
       <span class="priority-badge" title={`Приоритет ${task.priority}`}>P{task.priority}</span>
     {/if}
-    <span class="post-label">{postLabel()}</span>
+    <button
+      type="button"
+      class="post-label"
+      onclick={(e) => {
+        e.stopPropagation();
+        if (consumeSuppressedClick()) return;
+        onEdit(task);
+      }}
+    >
+      {postLabel()}
+    </button>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <!-- Stops the click from bubbling to the tile's own onclick (which opens the edit
          form) — toggling done shouldn't also open the form. -->
@@ -111,7 +114,7 @@
   .post.dragging {
     opacity: 0.3;
   }
-  .post:focus-visible {
+  .post-label:focus-visible {
     outline: 2px solid var(--color-text);
     outline-offset: 1px;
   }
@@ -130,6 +133,18 @@
     font-weight: 600;
     flex: 1;
     min-width: 0;
+    /* Reset <button> defaults — visually identical to the plain <span> this replaced,
+       see the nested-interactive-controls comment above the markup for why it's a
+       button now. */
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
   }
   .priority-badge {
     font-size: 0.65rem;

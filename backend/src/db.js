@@ -74,7 +74,9 @@ for (const [column, type] of [
 // way is to rebuild the table. Needed so existing databases (from before "unscheduled"
 // backlog tasks existed) allow date to be NULL too, not just brand-new ones. Uses an
 // explicit column list (not SELECT *) so it doesn't depend on old/new column order
-// matching.
+// matching — but that means every column on `tasks` MUST be listed in all three of
+// CREATE TABLE/INSERT/SELECT below, or it's silently dropped along with its data (this
+// previously happened to `platform`, added after this migration was written).
 const dateColumn = db.prepare("PRAGMA table_info(tasks)").all().find((c) => c.name === 'date');
 if (dateColumn?.notnull) {
   db.exec('BEGIN');
@@ -92,6 +94,7 @@ if (dateColumn?.notnull) {
         color TEXT,
         client TEXT,
         post_type TEXT,
+        platform TEXT,
         priority INTEGER,
         image_path TEXT,
         reminder_sent INTEGER NOT NULL DEFAULT 0,
@@ -105,12 +108,12 @@ if (dateColumn?.notnull) {
       );
       INSERT INTO tasks_new (
         id, user_id, title, notes, date, time, status, shared,
-        color, client, post_type, priority, image_path, reminder_sent,
+        color, client, post_type, platform, priority, image_path, reminder_sent,
         email_on_complete, email_to, email_subject, email_body, email_sent, created_at, updated_at
       )
       SELECT
         id, user_id, title, notes, date, time, status, shared,
-        color, client, post_type, priority, image_path, reminder_sent,
+        color, client, post_type, platform, priority, image_path, reminder_sent,
         email_on_complete, email_to, email_subject, email_body, email_sent, created_at, updated_at
       FROM tasks;
       DROP TABLE tasks;

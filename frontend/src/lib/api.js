@@ -3,6 +3,15 @@ import { auth } from './stores.js';
 
 const CACHE_PREFIX = 'planer_tasks_cache_';
 
+// Shared by request() below and the two multipart upload functions (uploadImage,
+// uploadLibraryAsset), which can't go through request() itself — see the comment on
+// uploadImage for why. Reads whichever shape the backend used (a single `error` string,
+// or tasks.js's validation `errors` array) so no call site has to know which.
+async function throwApiError(res) {
+  const body = await res.json().catch(() => ({}));
+  throw new Error(body.error || (body.errors || []).join(', ') || `Грешка ${res.status}`);
+}
+
 async function request(path, options = {}) {
   const current = get(auth);
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -18,10 +27,7 @@ async function request(path, options = {}) {
     throw new Error('Сесията е изтекла. Влез отново.');
   }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || (body.errors || []).join(', ') || `Грешка ${res.status}`);
-  }
+  if (!res.ok) await throwApiError(res);
 
   if (res.status === 204) return null;
   return res.json();
@@ -59,10 +65,36 @@ export function logout() {
 // On a network error (fetch throws TypeError) we read from the cache instead of
 // crashing the view. Writes (create/update/delete) are not queued offline — they just
 // show an error; full two-way sync is out of scope for the MVP.
+//
+// Bounded LRU: every distinct date/range/calendar-owner combination gets its own cache
+// key (see getTasks/getTasksRange/getUnscheduledTasks below), and switching weeks/
+// months/shared calendars over months of daily PWA use would otherwise pile up
+// localStorage entries forever — small individually, but localStorage's per-origin
+// quota is tight enough that "forever" is a real problem for an app people keep
+// installed long-term. MAX_CACHE_ENTRIES caps it; least-recently-used ones are evicted.
+const CACHE_ORDER_KEY = 'planer_tasks_cache_order';
+const MAX_CACHE_ENTRIES = 30;
+
+function touchCacheKey(cacheKey) {
+  let order = [];
+  try {
+    order = JSON.parse(localStorage.getItem(CACHE_ORDER_KEY)) || [];
+  } catch {
+    order = [];
+  }
+  order = order.filter((k) => k !== cacheKey);
+  order.push(cacheKey);
+  while (order.length > MAX_CACHE_ENTRIES) {
+    localStorage.removeItem(order.shift());
+  }
+  localStorage.setItem(CACHE_ORDER_KEY, JSON.stringify(order));
+}
+
 async function fetchTasksWithCache(cacheKey, path) {
   try {
     const tasks = await request(path);
     localStorage.setItem(cacheKey, JSON.stringify(tasks));
+    touchCacheKey(cacheKey);
     return { tasks, offline: false };
   } catch (err) {
     if (err instanceof TypeError) {
@@ -140,10 +172,7 @@ export async function uploadImage(file) {
   if (current?.token) headers.Authorization = `Bearer ${current.token}`;
 
   const res = await fetch('/api/uploads', { method: 'POST', body: formData, headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Грешка ${res.status}`);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -222,10 +251,7 @@ export async function uploadLibraryAsset({ client, type, title, file, textConten
 
   const params = calendarSuffix(calendarOwnerId);
   const res = await fetch(`/api/library${params ? `?${params}` : ''}`, { method: 'POST', body: formData, headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || (body.errors || []).join(', ') || `Грешка ${res.status}`);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 

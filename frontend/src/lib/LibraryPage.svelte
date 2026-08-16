@@ -11,6 +11,7 @@
   import { todayStr, addMonths, getMonthGridDates, monthLabel } from './date.js';
   import TaskForm from './TaskForm.svelte';
   import MonthCalendar from './MonthCalendar.svelte';
+  import { trapFocus } from './modalA11y.js';
 
   // activeCalendarOwnerId: null = your own library; otherwise the owner id of a
   // calendar shared with you (see CalendarSwitcher.svelte in MainView's header, which
@@ -314,7 +315,7 @@
       {/each}
     </div>
 
-    {#if error}<p class="error">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{error}</p>{/if}
 
     {#if selectedType === POSTS_TAB}
       <div class="calendar-area">
@@ -416,9 +417,16 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => (showUploadForm = false)}>
       <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="modal" onclick={(e) => e.stopPropagation()}>
-        <h2>Нов материал</h2>
+      <div
+        class="modal"
+        tabindex="-1"
+        onclick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upload-modal-title"
+        use:trapFocus={{ onEscape: () => (showUploadForm = false) }}
+      >
+        <h2 id="upload-modal-title">Нов материал</h2>
         <form onsubmit={handleUploadSubmit}>
           <label>
             Клиент
@@ -467,7 +475,7 @@
               />
             </label>
           {/if}
-          {#if formError}<p class="error">{formError}</p>{/if}
+          {#if formError}<p class="error" role="alert">{formError}</p>{/if}
           <div class="form-actions">
             <button type="button" class="secondary" onclick={() => (showUploadForm = false)}>Отказ</button>
             <button type="submit" disabled={formSaving}>{formSaving ? 'Качване...' : 'Качи'}</button>

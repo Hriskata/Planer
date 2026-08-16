@@ -1,13 +1,9 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
+const { UPLOADS_DIR } = require('../uploadStorage');
 
 const router = express.Router();
-
-const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const ALLOWED_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB

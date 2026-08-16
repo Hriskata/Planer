@@ -9,7 +9,8 @@ const fs = require('fs');
 process.env.DB_PATH = ':memory:';
 process.env.JWT_SECRET = 'test-jwt-secret';
 process.env.ENCRYPTION_KEY = '0'.repeat(64);
-process.env.UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'planer-test-uploads-'));
+const UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'planer-test-uploads-'));
+process.env.UPLOADS_DIR = UPLOADS_DIR;
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -78,4 +79,4 @@ async function api(path, { method = 'GET', token, body, form } = {}) {
   return { status: res.status, body: json };
 }
 
-module.exports = { startServer, stopServer, createUser, tokenFor, shareCalendar, setEmail, api, db };
+module.exports = { startServer, stopServer, createUser, tokenFor, shareCalendar, setEmail, api, db, UPLOADS_DIR };

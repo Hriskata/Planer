@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const db = require('../db');
 const { normalizeEmail } = require('../validators');
+const { checkAndConsume, reset: resetRateLimit } = require('../rateLimit');
 
 const router = express.Router();
 
@@ -12,11 +13,28 @@ const router = express.Router();
 // app instead of an access+refresh token pair. See note 3 in the project brief.
 const TOKEN_TTL = '30d';
 
+// Keyed by the submitted username (not IP — see rateLimit.js for why) so repeated
+// guesses against one account get throttled regardless of how many different attacker
+// IPs are involved, without risking one shared-IP legitimate user (everyone behind the
+// Cloudflare Tunnel looks like the same IP to this server) locking out someone else.
+const LOGIN_MAX_ATTEMPTS = 8;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
 router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
 
   if (typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'Нужни са потребителско име и парола.' });
+  }
+
+  const rateLimitKey = `login:${username.toLowerCase()}`;
+  const { limited, retryAfterMs } = checkAndConsume(rateLimitKey, {
+    max: LOGIN_MAX_ATTEMPTS,
+    windowMs: LOGIN_WINDOW_MS,
+  });
+  if (limited) {
+    res.set('Retry-After', String(Math.ceil(retryAfterMs / 1000)));
+    return res.status(429).json({ error: 'Твърде много неуспешни опити. Опитай отново след малко.' });
   }
 
   const user = db.prepare('SELECT id, username, password_hash FROM users WHERE username = ?').get(username);
@@ -27,6 +45,7 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Грешно потребителско име или парола.' });
   }
 
+  resetRateLimit(rateLimitKey);
   const token = issueToken(user);
   res.json({ token, user: { id: user.id, username: user.username } });
 });

@@ -14,6 +14,7 @@
     removeCalendarShare,
   } from './api.js';
   import Icon from './Icon.svelte';
+  import { trapFocus } from './modalA11y.js';
 
   let dropdownOpen = $state(false);
   let modalOpen = $state(false);
@@ -103,7 +104,11 @@
     emailSaved = false;
     emailSaving = true;
     try {
-      await updateEmailSenderSettings({ email: senderEmail, appPassword: '' });
+      // No `email` key here on purpose — this button means "clear the password", not
+      // "also save whatever's currently sitting in the email field". Passing the live
+      // senderEmail would silently commit a half-typed/unsaved address edit as a side
+      // effect of a button that has nothing to do with the email field.
+      await updateEmailSenderSettings({ appPassword: '' });
       hasAppPassword = false;
       senderAppPassword = '';
       emailSaved = true;
@@ -221,8 +226,8 @@
     }}
     role="presentation"
   >
-    <div class="modal">
-      <h2>Известия</h2>
+    <div class="modal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="notif-modal-title" use:trapFocus={{ onEscape: () => (modalOpen = false) }}>
+      <h2 id="notif-modal-title">Известия</h2>
 
       {#if loading}
         <p class="hint">Зареждане...</p>
@@ -243,7 +248,7 @@
           />
         </label>
 
-        {#if error}<p class="error">{error}</p>{/if}
+        {#if error}<p class="error" role="alert">{error}</p>{/if}
         {#if saved}<p class="hint success">Запазено.</p>{/if}
 
         <div class="modal-actions">
@@ -265,8 +270,8 @@
     }}
     role="presentation"
   >
-    <div class="modal">
-      <h2>Имейл подател</h2>
+    <div class="modal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="email-modal-title" use:trapFocus={{ onEscape: () => (emailModalOpen = false) }}>
+      <h2 id="email-modal-title">Имейл подател</h2>
       <p class="hint">
         Използва се за автоматизацията "изпрати имейл при завършване" в задачите — писмата тръгват
         през твоя Gmail, не през общ сървърен акаунт.
@@ -295,7 +300,7 @@
           </button>
         {/if}
 
-        {#if emailError}<p class="error">{emailError}</p>{/if}
+        {#if emailError}<p class="error" role="alert">{emailError}</p>{/if}
         {#if emailSaved}<p class="hint success">Запазено.</p>{/if}
 
         <div class="modal-actions">
@@ -317,8 +322,8 @@
     }}
     role="presentation"
   >
-    <div class="modal">
-      <h2>Споделяне на календар</h2>
+    <div class="modal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="sharing-modal-title" use:trapFocus={{ onEscape: () => (sharingModalOpen = false) }}>
+      <h2 id="sharing-modal-title">Споделяне на календар</h2>
       <p class="hint">
         Имейлите тук виждат целия ти календар (само преглед, не могат да редактират) — щом
         влязат с този имейл (Google или като си зададат същия в "Имейл подател"), той се
@@ -348,7 +353,7 @@
           <button type="submit" disabled={sharingSaving}>{sharingSaving ? '...' : 'Добави'}</button>
         </form>
 
-        {#if sharingError}<p class="error">{sharingError}</p>{/if}
+        {#if sharingError}<p class="error" role="alert">{sharingError}</p>{/if}
 
         <div class="modal-actions">
           <button class="secondary" onclick={() => (sharingModalOpen = false)}>Затвори</button>
@@ -563,7 +568,7 @@
     color: var(--color-text-muted);
   }
   .hint.success {
-    color: #16a34a;
+    color: var(--color-success);
   }
   .error {
     color: var(--color-danger);

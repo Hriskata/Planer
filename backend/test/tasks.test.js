@@ -1,6 +1,16 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { startServer, stopServer, createUser, tokenFor, api } = require('./helpers');
+const fs = require('fs');
+const path = require('path');
+const { startServer, stopServer, createUser, tokenFor, api, UPLOADS_DIR } = require('./helpers');
+
+async function uploadFakeImage(token) {
+  const fd = new FormData();
+  fd.append('image', new Blob(['fake-image-bytes'], { type: 'image/png' }), 'photo.png');
+  const res = await api('/api/uploads', { method: 'POST', token, form: fd });
+  assert.equal(res.status, 201);
+  return res.body.path; // e.g. '/uploads/<uuid>.png'
+}
 
 let token;
 
@@ -96,4 +106,49 @@ test("a user can't edit or delete someone else's task", async () => {
 
   const deleteAttempt = await api(`/api/tasks/${created.body.id}`, { method: 'DELETE', token: intruderToken });
   assert.equal(deleteAttempt.status, 403);
+});
+
+test('deleting a task removes its uploaded photo from disk', async () => {
+  const imagePath = await uploadFakeImage(token);
+  const diskPath = path.join(UPLOADS_DIR, path.basename(imagePath));
+  assert.ok(fs.existsSync(diskPath), 'uploaded file should exist right after upload');
+
+  const created = await api('/api/tasks', { method: 'POST', token, body: { title: 'with photo', image_path: imagePath } });
+  assert.equal(created.status, 201);
+
+  await api(`/api/tasks/${created.body.id}`, { method: 'DELETE', token });
+  // deleteUploadedFile is fire-and-forget (fs.unlink callback) — give it a tick.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(!fs.existsSync(diskPath), 'uploaded file should be removed after the task is deleted');
+});
+
+test('replacing a task photo removes the old file, keeps the new one', async () => {
+  const oldPath = await uploadFakeImage(token);
+  const newPath = await uploadFakeImage(token);
+  const oldDiskPath = path.join(UPLOADS_DIR, path.basename(oldPath));
+  const newDiskPath = path.join(UPLOADS_DIR, path.basename(newPath));
+
+  const created = await api('/api/tasks', { method: 'POST', token, body: { title: 'photo swap', image_path: oldPath } });
+  await api(`/api/tasks/${created.body.id}`, { method: 'PUT', token, body: { image_path: newPath } });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.ok(!fs.existsSync(oldDiskPath), 'old photo should be removed after being replaced');
+  assert.ok(fs.existsSync(newDiskPath), 'new photo should still exist');
+});
+
+test('a duplicated task sharing the same photo keeps it alive until BOTH are gone', async () => {
+  const imagePath = await uploadFakeImage(token);
+  const diskPath = path.join(UPLOADS_DIR, path.basename(imagePath));
+
+  // Mirrors TaskForm's "Копирай" — a duplicate starts with the same image_path as its source.
+  const original = await api('/api/tasks', { method: 'POST', token, body: { title: 'original', image_path: imagePath } });
+  const duplicate = await api('/api/tasks', { method: 'POST', token, body: { title: 'copy', image_path: imagePath } });
+
+  await api(`/api/tasks/${original.body.id}`, { method: 'DELETE', token });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(fs.existsSync(diskPath), 'photo must survive while the duplicate still references it');
+
+  await api(`/api/tasks/${duplicate.body.id}`, { method: 'DELETE', token });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.ok(!fs.existsSync(diskPath), 'photo should finally be removed once nothing references it');
 });

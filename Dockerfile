@@ -25,4 +25,10 @@ COPY --from=frontend-build /frontend/dist /app/frontend/dist
 
 ENV NODE_ENV=production
 EXPOSE 3000
+# No curl/wget on -slim — node itself hits a cheap public (no-auth) endpoint. Lets
+# docker-compose's cloudflared wait for condition: service_healthy instead of just
+# "container started", so a backend that fails fast (e.g. missing JWT_SECRET, see
+# index.js) doesn't leave the tunnel routing to a dead process with no signal why.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 3000) + '/api/auth/google-client-id', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 CMD ["node", "src/index.js"]
