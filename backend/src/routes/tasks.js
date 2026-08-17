@@ -664,6 +664,65 @@ router.post('/', (req, res) => {
   }
 });
 
+// Bulk date shift for an arbitrary set of tasks (not necessarily a series) — "select a
+// bunch of posts, move them all N days/weeks forward or back" (see feature-ideas.md т.2).
+// Declared BEFORE PUT /:id so Express doesn't match "bulk-move" as that route's :id param.
+const MAX_BULK_MOVE_IDS = 200; // sanity/abuse cap, same spirit as MAX_SERIES_OCCURRENCES
+const MAX_BULK_MOVE_OFFSET_DAYS = 3650; // 10 years
+
+router.put('/bulk-move', (req, res) => {
+  const { ids, offsetDays } = req.body || {};
+
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_BULK_MOVE_IDS) {
+    return res.status(400).json({ error: `ids трябва да е непразен масив от най-много ${MAX_BULK_MOVE_IDS} стойности.` });
+  }
+  if (!ids.every((id) => Number.isInteger(id) && id > 0)) {
+    return res.status(400).json({ error: 'ids трябва да съдържа само цели положителни числа.' });
+  }
+  if (
+    !Number.isInteger(offsetDays) ||
+    offsetDays === 0 ||
+    Math.abs(offsetDays) > MAX_BULK_MOVE_OFFSET_DAYS
+  ) {
+    return res.status(400).json({ error: `offsetDays трябва да е различно от нула цяло число, до ${MAX_BULK_MOVE_OFFSET_DAYS}.` });
+  }
+
+  const rows = db.prepare(`SELECT * FROM tasks WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  const found = new Map(rows.map((r) => [r.id, r]));
+
+  // All-or-nothing ownership check (same "validate every target row before applying
+  // anything" philosophy as PUT /:id/series) — a missing id or one owned by someone else
+  // fails the whole batch instead of silently moving a partial subset.
+  for (const id of ids) {
+    const row = found.get(id);
+    if (!row) return res.status(404).json({ error: `Задача ${id} не е намерена.` });
+    if (row.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Може да местиш само собствените си задачи.' });
+    }
+  }
+
+  // date === null (unscheduled/backlog) is skipped silently — moving "by N days" is
+  // meaningless without a starting date. Defense in depth: the frontend never lets a
+  // backlog task be selected for this in the first place.
+  const targets = ids.map((id) => found.get(id)).filter((row) => row.date !== null);
+
+  const results = [];
+  db.exec('BEGIN');
+  try {
+    for (const row of targets) {
+      const newDate = addDays(row.date, offsetDays);
+      const { updated } = applyTaskUpdate(row, { date: newDate }, req.user.id);
+      results.push(updated);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  res.json({ updated: results });
+});
+
 router.put('/:id', (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
 

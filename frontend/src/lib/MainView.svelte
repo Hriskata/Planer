@@ -1,6 +1,7 @@
 <script>
+  import { SvelteSet } from 'svelte/reactivity';
   import { auth } from './stores.js';
-  import { getTasks, getTasksRange, getUnscheduledTasks, updateTask, logout } from './api.js';
+  import { getTasks, getTasksRange, getUnscheduledTasks, updateTask, bulkMoveTasks, logout } from './api.js';
   import {
     todayStr,
     addDays,
@@ -58,6 +59,48 @@
   // while viewing someone else's, since sharing is read-only.
   let activeCalendarOwnerId = $state(null);
   const readOnly = $derived(activeCalendarOwnerId !== null);
+
+  // Bulk-move select mode (feature-ideas.md т.2) — SvelteSet (svelte/reactivity), not a
+  // plain $state(new Set()): plain $state only deep-proxies objects/arrays, not other
+  // built-in classes, so .add()/.delete() on a plain Set wouldn't trigger updates (the
+  // "N избрани" bar/checkbox state would silently go stale). SvelteSet's mutations are
+  // reactive out of the box. Day/Week/Month participate (see PostTile/MonthCalendar);
+  // the Backlog column deliberately doesn't — unscheduled tasks have no date to shift.
+  let selectMode = $state(false);
+  let selectedIds = new SvelteSet();
+  let bulkMoveAmount = $state(1);
+  let bulkMoveUnit = $state('days'); // 'days' | 'weeks'
+  let bulkMoveError = $state('');
+  let bulkMoving = $state(false);
+
+  function toggleSelectMode() {
+    selectMode = !selectMode;
+    selectedIds.clear();
+    bulkMoveError = '';
+  }
+  function toggleSelect(task) {
+    if (selectedIds.has(task.id)) selectedIds.delete(task.id);
+    else selectedIds.add(task.id);
+  }
+  async function handleBulkMove() {
+    const amount = Number(bulkMoveAmount);
+    if (!Number.isInteger(amount) || amount === 0) {
+      bulkMoveError = 'Въведи цяло число, различно от нула.';
+      return;
+    }
+    const offsetDays = bulkMoveUnit === 'weeks' ? amount * 7 : amount;
+    bulkMoving = true;
+    bulkMoveError = '';
+    try {
+      await bulkMoveTasks([...selectedIds], offsetDays);
+      selectedIds.clear();
+      await loadTasks({ silent: true });
+    } catch (err) {
+      bulkMoveError = err.message;
+    } finally {
+      bulkMoving = false;
+    }
+  }
 
   const weekDates = $derived(getWeekDates(currentDate));
   const monthDates = $derived(getMonthGridDates(currentDate));
@@ -259,7 +302,31 @@
     <button onclick={goToday}>Днес</button>
     <button onclick={goNext} aria-label="Напред">›</button>
   </div>
+  {#if !readOnly}
+    <button class:active={selectMode} onclick={toggleSelectMode}>
+      {selectMode ? 'Отказ' : 'Избери'}
+    </button>
+  {/if}
 </nav>
+
+{#if selectMode && selectedIds.size > 0}
+  <div class="bulk-move-bar">
+    <span>{selectedIds.size} избрани</span>
+    <input
+      type="number"
+      class="bulk-move-amount"
+      bind:value={bulkMoveAmount}
+      aria-label="Брой дни/седмици за местене"
+    />
+    <select bind:value={bulkMoveUnit} aria-label="Единица за местене">
+      <option value="days">Дни</option>
+      <option value="weeks">Седмици</option>
+    </select>
+    <button onclick={handleBulkMove} disabled={bulkMoving}>{bulkMoving ? 'Местене...' : 'Премести'}</button>
+    <button class="secondary" onclick={() => selectedIds.clear()}>Изчисти</button>
+    {#if bulkMoveError}<span class="error">{bulkMoveError}</span>{/if}
+  </div>
+{/if}
 
 <div class="search-bar">
   <div class="search-input">
@@ -333,7 +400,7 @@
             class:read-only={readOnly}
             data-date={currentDate}
             onclick={(e) => {
-              if (readOnly) return;
+              if (readOnly || selectMode) return;
               if (e.target.closest('.post')) return;
               handleGridCreate(currentDate, null);
             }}
@@ -345,6 +412,9 @@
                 onEdit={openEditForm}
                 onToggle={handleToggleStatus}
                 {readOnly}
+                {selectMode}
+                selected={selectedIds.has(task.id)}
+                onToggleSelect={toggleSelect}
               />
             {:else}
               <p class="empty">Няма задачи за този ден.</p>
@@ -359,6 +429,9 @@
             onToggle={handleToggleStatus}
             onCreate={handleGridCreate}
             {readOnly}
+            {selectMode}
+            {selectedIds}
+            onToggleSelect={toggleSelect}
           />
         {:else}
           <h2>{monthLabel(currentDate)}</h2>
@@ -371,6 +444,9 @@
             onDayClick={handleDayClick}
             onCreate={handleGridCreate}
             {readOnly}
+            {selectMode}
+            {selectedIds}
+            onToggleSelect={toggleSelect}
           />
         {/if}
       </div>
@@ -728,6 +804,47 @@
     padding: 0.5rem 0.75rem;
     border-radius: 8px;
     font-size: 0.85rem;
+  }
+  .bulk-move-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    background: var(--color-banner-bg);
+    color: var(--color-banner-text);
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    width: min(1600px, 96vw);
+    align-self: center;
+    box-sizing: border-box;
+  }
+  .bulk-move-bar select,
+  .bulk-move-bar button {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+  .bulk-move-bar button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .bulk-move-bar button.secondary {
+    background: none;
+  }
+  .bulk-move-amount {
+    width: 4.5rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
   }
   .error {
     color: var(--color-danger);

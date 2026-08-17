@@ -4,7 +4,18 @@
   import { consumeSuppressedClick } from './dragDrop.svelte.js';
   import PostTile from './PostTile.svelte';
 
-  let { weekDates, tasks, searchFilter = {}, onEdit, onToggle, onCreate, readOnly = false } = $props();
+  let {
+    weekDates,
+    tasks,
+    searchFilter = {},
+    onEdit,
+    onToggle,
+    onCreate,
+    readOnly = false,
+    selectMode = false,
+    selectedIds = null,
+    onToggleSelect = null,
+  } = $props();
 
   function isDimmed(task) {
     return hasActiveFilters(searchFilter) && !taskMatchesFilters(task, searchFilter);
@@ -25,7 +36,7 @@
   // grid here, so a click just creates an untimed post for that day — the user sets a
   // time in the form if they want one.
   function handleColumnClick(e, date) {
-    if (readOnly) return;
+    if (readOnly || selectMode) return;
     if (consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('.post')) return;
     onCreate(date, null);
@@ -60,7 +71,16 @@
           onclick={(e) => handleColumnClick(e, day.date)}
         >
           {#each day.tasks as task (task.id)}
-            <PostTile {task} dimmed={isDimmed(task)} {onEdit} {onToggle} {readOnly} />
+            <PostTile
+              {task}
+              dimmed={isDimmed(task)}
+              {onEdit}
+              {onToggle}
+              {readOnly}
+              {selectMode}
+              selected={selectedIds?.has(task.id) ?? false}
+              {onToggleSelect}
+            />
           {:else}
             <p class="empty-hint">Няма постове</p>
           {/each}

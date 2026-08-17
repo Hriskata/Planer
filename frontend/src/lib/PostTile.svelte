@@ -9,7 +9,10 @@
   // readOnly: viewing someone else's shared calendar (see CalendarSwitcher.svelte) —
   // no drag, no toggling done; the tile still opens on click, MainView just renders
   // TaskForm itself in read-only mode when this is set.
-  let { task, dimmed = false, onEdit, onToggle, readOnly = false } = $props();
+  // selectMode/selected/onToggleSelect: bulk-move select mode (see MainView.svelte) —
+  // while active, clicking the tile toggles selection instead of opening the edit form,
+  // and drag is suppressed (selecting, not moving-by-drag, is the active intent).
+  let { task, dimmed = false, onEdit, onToggle, readOnly = false, selectMode = false, selected = false, onToggleSelect = null } = $props();
 
   // Done tasks always render gray+struck-through (CSS class) regardless of post-type
   // color — an inline style would otherwise win the cascade over that class, so this
@@ -42,17 +45,29 @@
   class="post"
   class:done={task.status === 'done'}
   class:dimmed
+  class:selected
   class:dragging={getDragState()?.task.id === task.id}
   style={tileColorStyle()}
   onpointerdown={(e) => {
-    if (!readOnly) handlePointerDown(e, task);
+    if (!readOnly && !selectMode) handlePointerDown(e, task);
   }}
   onclick={() => {
     if (consumeSuppressedClick()) return;
-    onEdit(task);
+    if (selectMode) onToggleSelect(task);
+    else onEdit(task);
   }}
 >
   <div class="post-header">
+    {#if selectMode}
+      <input
+        type="checkbox"
+        class="select-checkbox"
+        checked={selected}
+        onclick={(e) => e.stopPropagation()}
+        onchange={() => onToggleSelect(task)}
+        aria-label={`Избери ${postLabel()}`}
+      />
+    {/if}
     {#if task.priority}
       <!-- Text stays the tile's own foreground color, not colorForPriority(task) — the
            left-edge stripe above already carries the color signal; recoloring the text
@@ -79,7 +94,8 @@
       onclick={(e) => {
         e.stopPropagation();
         if (consumeSuppressedClick()) return;
-        onEdit(task);
+        if (selectMode) onToggleSelect(task);
+        else onEdit(task);
       }}
     >
       {postLabel()}
@@ -116,6 +132,14 @@
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+  }
+  .post.selected {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+  .select-checkbox {
+    flex-shrink: 0;
+    cursor: pointer;
   }
   .post.done {
     background: var(--color-text-faint);

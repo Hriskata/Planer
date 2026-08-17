@@ -5,7 +5,19 @@
   import { taskMatchesFilters, hasActiveFilters } from './search.js';
   import { getDragState, handlePointerDown, consumeSuppressedClick } from './dragDrop.svelte.js';
 
-  let { monthDates, referenceMonth, tasks, searchFilter = {}, onEdit, onDayClick, onCreate, readOnly = false } = $props();
+  let {
+    monthDates,
+    referenceMonth,
+    tasks,
+    searchFilter = {},
+    onEdit,
+    onDayClick,
+    onCreate,
+    readOnly = false,
+    selectMode = false,
+    selectedIds = null,
+    onToggleSelect = null,
+  } = $props();
 
   const MAX_CHIPS = 3;
   const today = todayStr();
@@ -79,7 +91,7 @@
   // their own clicks (navigate/edit), so this only fires when the click didn't land on
   // one of them.
   function handleCellClick(e, date) {
-    if (readOnly) return;
+    if (readOnly || selectMode) return;
     if (consumeSuppressedClick()) return; // this click ended a drag, not a tap
     if (e.target.closest('button')) return;
     onCreate(date);
@@ -117,14 +129,16 @@
               class="chip"
               class:done={task.status === 'done'}
               class:dimmed={isDimmed(task)}
+              class:selected={selectedIds?.has(task.id) ?? false}
               class:dragging={getDragState()?.task.id === task.id}
               style={chipStyle(task)}
               onpointerdown={(e) => {
-                if (!readOnly) handlePointerDown(e, task);
+                if (!readOnly && !selectMode) handlePointerDown(e, task);
               }}
               onclick={() => {
                 if (consumeSuppressedClick()) return;
-                onEdit(task);
+                if (selectMode) onToggleSelect(task);
+                else onEdit(task);
               }}
             >
               {#if task.priority}
@@ -253,6 +267,10 @@
   .chip.dimmed {
     opacity: 0.35;
     filter: grayscale(60%);
+  }
+  .chip.selected {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
   }
   .chip-priority-dot {
     width: 0.35rem;

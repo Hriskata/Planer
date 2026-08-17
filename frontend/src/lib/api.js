@@ -299,6 +299,14 @@ export function updateTask(id, data) {
   return request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 
+// Bulk date shift for an arbitrary set of selected tasks (select-mode + move bar in
+// MainView.svelte) — offsetDays can be negative (move backward). Different from
+// updateSeriesScope below: this isn't about a recurring series, just whichever tasks the
+// user has checkbox-selected across the current view(s).
+export function bulkMoveTasks(ids, offsetDays) {
+  return request('/tasks/bulk-move', { method: 'PUT', body: JSON.stringify({ ids, offsetDays }) });
+}
+
 // Bulk-edit "this and all following" / "the entire series" (see SeriesScopeDialog.svelte).
 // `id` is the anchor occurrence the user was looking at when they chose the scope;
 // "just this one" never calls this — it goes through updateTask() with series_id: null.
